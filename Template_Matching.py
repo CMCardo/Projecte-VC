@@ -77,3 +77,100 @@ def prepare_photo_profile(binary_mask_path):
             perfil_1d[x] = height - y_muntanya
             
     return perfil_1d
+
+
+
+
+def find_best_match_points(foto_profile, dem_profile, min_fov=30, max_fov=100):
+
+    best_error = float('inf') # Comencem amb un error infinitament gran
+    best_fov = 0
+    best_angle = 0
+    
+    # 1. Preparem el DEM (truc del wrap-around)
+    dem_extended = np.concatenate((dem_profile, dem_profile))
+    
+    # 2. Normalitzem la foto tota sencera de 0 a 1
+    # Evitem dividir per zero sumant un número minúscul (1e-5)
+    foto_norm = (foto_profile - np.min(foto_profile)) / (np.max(foto_profile) - np.min(foto_profile) + 1e-5)
+    
+    # 3. Bucle Multi-escala
+    for fov in range(min_fov, max_fov + 1):
+        
+        # Redimensionem la foto normalitzada
+        foto_resized = cv2.resize(foto_norm.reshape(1, -1), (fov, 1), interpolation=cv2.INTER_LINEAR)[0]
+        
+        # 4. Fem lliscar aquesta foto per cada angle del DEM
+        for angle in range(360):
+            # Retallem el tros de DEM que toca analitzar ara
+            dem_window = dem_extended[angle : angle + fov]
+            
+            # Normalitzem AQUEST tros de DEM de 0 a 1
+            dem_window_norm = (dem_window - np.min(dem_window)) / (np.max(dem_window) - np.min(dem_window) + 1e-5)
+            
+            # 5. MATEMÀTIQUES PURES: Càlcul d'error punt a punt
+            # Restem el valor del DEM al de la Foto, treiem els negatius (abs) i fem la mitjana
+            error_actual = np.mean(np.abs(foto_resized - dem_window_norm))
+            
+            # Si aquest error és més petit que el rècord anterior, el guardem!
+            if error_actual < best_error:
+                best_error = error_actual
+                best_angle = angle
+                best_fov = fov
+                
+    best_angle = best_angle % 360
+    
+    # Convertim l'error (de 0 a 1) en un percentatge d'encert perquè sigui fàcil de llegir
+    percentatge_encert = (1.0 - best_error) * 100
+                
+    return best_angle, best_fov, percentatge_encert
+
+
+
+def find_best_match_coincidence(foto_profile, dem_profile, min_fov=30, max_fov=100, tolerancia=0.05):
+    """
+    Fa lliscar la línia de la foto sobre el DEM i compta quants punts coincideixen
+    (estan pràcticament l'un a sobre de l'altre dins d'un marge de tolerància).
+    Retorna l'angle i el FOV amb el percentatge més alt de punts "Hit".
+    """
+    best_score = -1.0 # Busquem el percentatge d'encerts més alt
+    best_fov = 0
+    best_angle = 0
+    
+    # 1. Preparem el DEM (truc del cilindre de 360º)
+    dem_extended = np.concatenate((dem_profile, dem_profile))
+    
+    # 2. Normalitzem la foto de 0 a 1
+    foto_norm = (foto_profile - np.min(foto_profile)) / (np.max(foto_profile) - np.min(foto_profile) + 1e-5)
+    
+    for fov in range(min_fov, max_fov + 1):
+        
+        # Redimensionem la foto perquè tingui exactament 'fov' punts
+        foto_resized = cv2.resize(foto_norm.reshape(1, -1), (fov, 1), interpolation=cv2.INTER_LINEAR)[0]
+        
+        for angle in range(360):
+            # Retallem el tros de DEM que toca ara
+            dem_window = dem_extended[angle : angle + fov]
+            
+            # Normalitzem aquest tros de DEM de 0 a 1
+            dem_window_norm = (dem_window - np.min(dem_window)) / (np.max(dem_window) - np.min(dem_window) + 1e-5)
+            
+            # 3. EL TEU MÈTODE: Càlcul de coincidències positives (Hits)
+            # Calculem la distància exacta entre cada parella de punts
+            diferencies = np.abs(foto_resized - dem_window_norm)
+            
+            # Comptem QUANTS punts tenen una distància més petita que la nostra tolerància (5%)
+            punts_coincidents = np.sum(diferencies < tolerancia)
+            
+            # Calculem quin percentatge de la línia ha coincidit
+            score_actual = (punts_coincidents / fov) * 100
+            
+            # Si aquesta posició té més coincidències que el nostre rècord, la guardem!
+            if score_actual > best_score:
+                best_score = score_actual
+                best_angle = angle
+                best_fov = fov
+                
+    best_angle = best_angle % 360
+                
+    return best_angle, best_fov, best_score
