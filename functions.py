@@ -49,9 +49,6 @@ def ask_photo_num_and_model(max_num_photo):
 
     
 
-
-
-
 def extract_mountain_contour(result_path):
 
     if not os.path.exists(result_path):

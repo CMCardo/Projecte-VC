@@ -2,6 +2,8 @@ import streamlit as st
 import os
 from photo_loader import sky_remove_cv2, sky_remove_ai, sky_remove_Laplace, sky_remove_hybrid
 from functions import extract_mountain_contour
+from DEM import get_360_profile, plot_360_profile, download_dynamic_dem
+from Template_Matching import prepare_photo_profile, find_best_match
 
 MAX_NUM_PHOTOS = 43
 
@@ -102,3 +104,39 @@ if st.button("Process Image"):
 
             else:
                 st.error("Something went wrong. The resulting image was not saved properly.")
+
+
+    print ("---------------------------------------------------------------")
+    foto_lat = 46.6358
+    foto_lon = 12.3164
+    foto_alt = 2405
+    #1, 12.311169072402626
+    # ENGANXA AQUÍ LA TEVA CLAU D'OPENTOPOGRAPHY (entre les cometes)
+    LA_TEVA_API_KEY = "8cfe74cb60bee3b3fff0d215fdb1bcda"
+
+    # Li passem la clau a la funció
+    dem_temporal = download_dynamic_dem(foto_lat, foto_lon, api_key=LA_TEVA_API_KEY, radi_km=35)
+
+    if dem_temporal:
+        perfil_virtual = get_360_profile(dem_temporal, foto_lat, foto_lon, foto_alt, max_dist_km=20)
+        
+        figura_perfil = plot_360_profile(perfil_virtual)
+        st.pyplot(figura_perfil)
+        
+        os.remove(dem_temporal)
+        print("🧹 Mapa temporal esborrat.")
+
+
+
+
+    # 1. Preparem la línia verda de la foto i la invertim correctament
+    foto_array_1d = prepare_photo_profile(result_path)
+
+    # 2. Fem el Template Matching per buscar a quin punt del DEM s'assembla més
+    angle, fov, similitud = find_best_match(foto_array_1d, perfil_virtual)
+
+    # 3. Mostrem els resultats per pantalla!
+    st.markdown("### 🎯 Resultats de l'Alineament")
+    st.write(f"**Angle de visió (Azimut):** {angle}º")
+    st.write(f"**Camp de visió (FOV / Zoom):** {fov}º")
+    st.write(f"**Percentatge de certesa:** {similitud * 100:.2f}%")
