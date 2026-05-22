@@ -4,6 +4,8 @@ import numpy as np
 import rasterio
 from pyproj import Transformer
 import matplotlib.pyplot as plt
+import math
+import requests
 
 def get_360_profile(dem_path, lat, lon, user_alt, max_dist_km=30):
 
@@ -85,7 +87,7 @@ def get_user_altitude_from_dem(dem_path, lat, lon):
             return altitud
 
 
-def download_dynamic_dem(lat, lon, api_key, radi_km=15):
+def download_dynamic_dem(lat, lon, api_key, radi_km=35, dem_type="COP90"):
     
     graus_radi = radi_km / 111.0
     
@@ -94,8 +96,8 @@ def download_dynamic_dem(lat, lon, api_key, radi_km=15):
     west = lon - graus_radi
     east = lon + graus_radi
 
-    url = f"https://portal.opentopography.org/API/globaldem?demtype=SRTMGL3&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
-    
+   # MODIFIED: demtype is now a dynamic variable
+    url = f"https://portal.opentopography.org/API/globaldem?demtype={dem_type}&south={south}&north={north}&west={west}&east={east}&outputFormat=GTiff&API_Key={api_key}"
     resposta = requests.get(url, stream=True)
     
     if resposta.status_code == 200:
@@ -109,3 +111,85 @@ def download_dynamic_dem(lat, lon, api_key, radi_km=15):
         print(f"Error downloading map: {resposta.status_code}")
         print(f"Reason: {resposta.text}") 
         return None
+    
+
+
+
+def calculate_bearing(lat1, lon1, lat2, lon2):
+    """Calcula l'angle (azimut) des del punt 1 fins al punt 2."""
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlon = lon2 - lon1
+    x = math.sin(dlon) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - (math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
+    initial_bearing = math.atan2(x, y)
+    
+    # Passem de radians a graus i assegurem que estigui entre 0 i 360
+    return (math.degrees(initial_bearing) + 360) % 360
+
+
+def get_visible_peaks(observer_lat, observer_lon, angle_start, fov, radius_km=25):
+    """
+    Busca cims a OpenStreetMap i retorna la llista de cims visibles, 
+    el total, i la llista absoluta de tots els cims amb el seu estat.
+    """
+    import requests
+    import math
+    
+    overpass_url = "https://lz4.overpass-api.de/api/interpreter"
+    query = f"""
+    [out:json];
+    node["natural"="peak"](around:{radius_km * 1000},{observer_lat},{observer_lon});
+    out body;
+    """
+    
+    headers = {'User-Agent': 'MountainSkyRemoverApp/1.0'}
+    
+    try:
+        response = requests.get(overpass_url, params={'data': query}, headers=headers, timeout=10)
+        data = response.json()
+    except Exception as e:
+        print(f"Error connectant amb OpenStreetMap: {e}")
+        return [], 0, []
+
+    elements = data.get('elements', [])
+    total_cims_zona = len(elements)
+    
+    angle_end = (angle_start + fov) % 360
+    tots_els_cims = []
+
+    for element in elements:
+        if 'tags' in element and 'name' in element['tags']:
+            peak_lat = element['lat']
+            peak_lon = element['lon']
+            
+            bearing = calculate_bearing(observer_lat, observer_lon, peak_lat, peak_lon)
+            
+            in_view = False
+            if angle_start < angle_end:
+                if angle_start <= bearing <= angle_end:
+                    in_view = True
+            else: 
+                if bearing >= angle_start or bearing <= angle_end:
+                    in_view = True
+                    
+            alt = element['tags'].get('ele', '0')
+            try: 
+                alt_float = float(alt)
+            except: 
+                alt_float = 0.0
+                
+            tots_els_cims.append({
+                'Nom del Cim': element['tags']['name'],
+                'Azimut (º)': round(bearing, 1),
+                'Altitud (m)': alt_float,
+                'Dins la Foto?': '✅ Sí' if in_view else '❌ No'
+            })
+
+    # Ordenem per altitud
+    tots_els_cims.sort(key=lambda x: x['Altitud (m)'], reverse=True)
+    
+    # Filtrem només els visibles per a la taula principal
+    cims_visibles = [cim for cim in tots_els_cims if cim['Dins la Foto?'] == '✅ Sí']
+    
+    # FIX: Retornem exactament les 3 coses que demana l'app.py
+    return cims_visibles, total_cims_zona, tots_els_cims

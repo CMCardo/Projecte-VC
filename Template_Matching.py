@@ -54,30 +54,43 @@ def find_best_match(foto_profile, dem_profile, min_fov=30, max_fov=100):
     return best_angle, best_fov, best_corr
 
 
-def prepare_photo_profile(binary_mask_path):
+def prepare_photo_profile(image_path):
     """
-    Llegeix la màscara final sense cel i n'extreu un array 1D d'altures.
+    Llegeix la imatge sense fons (RGBA) i n'extreu la silueta superior llegint la transparència.
+    També aplica un filtre suau per eliminar soroll o punts solitaris.
     """
-    # Llegim la imatge en escala de grisos (el cel serà negre o transparent, la muntanya blanca/gris)
-    img = cv2.imread(binary_mask_path, cv2.IMREAD_GRAYSCALE)
-    height, width = img.shape
+    # Llegim la imatge amb TOTS els seus canals (inclòs l'Alpha/Transparència si en té)
+    img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    height, width = img.shape[:2]
     
     perfil_1d = np.zeros(width)
     
-    # Per cada columna de la foto, busquem on comença la muntanya
+    # Comprovem si la imatge té transparència (4 canals: Red, Green, Blue, Alpha)
+    if img.shape[2] == 4:
+        # Ens quedem només amb el canal de transparència (0 = Cel, 255 = Muntanya)
+        mask = img[:, :, 3] 
+    else:
+        # Si no té transparència, la passem a grisos
+        mask = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Escanegem columna a columna buscant el primer píxel sòlid
     for x in range(width):
-        # Busquem el primer píxel que no sigui cel (baixant des de dalt)
-        y_muntanya = np.argmax(img[:, x] > 0) 
+        # Busquem el primer píxel que tingui un valor major a 10 (que no sigui transparent)
+        y_muntanya = np.argmax(mask[:, x] > 10) 
         
-        if y_muntanya == 0 and img[0, x] == 0:
-            # Si no hi ha muntanya en aquesta columna (tot és cel)
+        if y_muntanya == 0 and mask[0, x] <= 10:
+            # Tota la columna és cel
             perfil_1d[x] = 0
         else:
-            # INVERTIM L'EIX: Restem l'alçada total perquè els pics tinguin valors positius grans
+            # Invertim l'eix: l'altura total menys la posició Y ens dona l'altura real
             perfil_1d[x] = height - y_muntanya
             
+    # --- FILTRE DE NETEJA MAGIC ---
+    # Apliquem un petit filtre "MedianBlur" a l'array matemàtic per eliminar 
+    # punts flotants d'un sol píxel o talls estranys i deixar una línia suau i contínua.
+    perfil_1d = cv2.GaussianBlur(perfil_1d.astype(np.float32).reshape(1, -1), (15, 1), 0)[0]
+            
     return perfil_1d
-
 
 
 
@@ -174,3 +187,74 @@ def find_best_match_coincidence(foto_profile, dem_profile, min_fov=30, max_fov=1
     best_angle = best_angle % 360
                 
     return best_angle, best_fov, best_score
+
+
+
+
+def extract_manual_profile(image_path):
+    """
+    Llegeix la imatge amb la línia vermella manual i en treu un perfil 1D.
+    """
+    img = cv2.imread(image_path)
+    if img is None:
+        return None
+        
+    # Passem a format HSV per detectar el color VERMELL fàcilment
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    
+    # El vermell a OpenCV té dos rangs
+    lower_red1 = np.array([0, 100, 100])
+    upper_red1 = np.array([10, 255, 255])
+    lower_red2 = np.array([160, 100, 100])
+    upper_red2 = np.array([180, 255, 255])
+    
+    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+    red_mask = mask1 + mask2
+    
+    height, width = red_mask.shape
+    profile = np.full(width, np.nan) # Omplim amb "Not a Number" per defecte
+    
+ 
+    # Per a cada columna, busquem el primer píxel vermell (el més alt)
+    for x in range(width):
+        y_indices = np.where(red_mask[:, x] > 0)[0]
+        if len(y_indices) > 0:
+            # GIREM LA LÍNIA: Restem la posició Y a l'alçada total de la imatge
+            profile[x] = height - y_indices[0]
+            
+    return profile
+
+def compare_contours(profile_manual, profile_algo, tolerance_px=5):
+    """
+    Compara els dos perfils i retorna % d'encert, % d'error i la distància mitjana.
+    """
+    if profile_manual is None or profile_algo is None:
+        return 0.0, 0.0, 0.0
+        
+    # Igualem longituds per si hi ha algun desajust
+    min_len = min(len(profile_manual), len(profile_algo))
+    p_man = profile_manual[:min_len]
+    p_alg = profile_algo[:min_len]
+    
+    # Filtrem només les columnes on l'usuari ha dibuixat la línia vermella (ignorant NaNs)
+    valid_cols = ~np.isnan(p_man) & ~np.isnan(p_alg)
+    
+    p_man_valid = p_man[valid_cols]
+    p_alg_valid = p_alg[valid_cols]
+    
+    if len(p_man_valid) == 0:
+        return 0.0, 0.0, 0.0
+        
+    # Calculem la distància absoluta en píxels per a cada columna
+    diffs = np.abs(p_man_valid - p_alg_valid)
+    
+    # Comptem els píxels que estan dins del marge de tolerància
+    matches = np.sum(diffs <= tolerance_px)
+    errors = len(diffs) - matches
+    
+    match_pct = (matches / len(diffs)) * 100
+    error_pct = (errors / len(diffs)) * 100
+    mean_dist = np.mean(diffs)
+    
+    return match_pct, error_pct, mean_dist
