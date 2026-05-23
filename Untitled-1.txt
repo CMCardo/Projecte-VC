@@ -1,0 +1,2140 @@
+// =============================================================================
+// GENERADOR DE CODI DE LOOS ===================================================
+// =============================================================================
+/*
+================================================================================
+Conceptes:
+Posicio:
+    - Etiqueta
+    - Int (b+desp)
+    - DespCamp(Desp)
+    - RefParametre(Desp)
+    
+Adreca:
+    - RefEtiqueta
+    - vector
+    - queue
+    - AdrecaAPila
+================================================================================
+*/
+
+use COM
+use semantic
+use GenCod
+use queue
+
+
+var CampsUnioGenerals = []; // --------------------------------------------------------------problemes generacio de codi (per a q no doni error) ----------------)
+
+// =============================================================================
+// Identificació dels alumnes del grup =========================================
+// =============================================================================
+
+SetComponentsGrup([
+    // Una linea per alumne amb el seguent format
+   ("Carles","Muñoz Cardó","1709779","1709779@uab.cat")
+])
+
+// =============================================================================
+// Prototips ===================================================================
+// =============================================================================
+
+Proc cod:CodiEnGeneracio.ConstruccioPerDefecte(adreca,tipus:TipusDeDades);
+Proc cod:CodiEnGeneracio.ConstruccioPerCopia(adrecaDesti,tDesti:TipusDeDades);
+Proc cod:CodiEnGeneracio.Destruccio(adreca,t:TipusDeDades);
+Proc cod:CodiEnGeneracio.Assignacio(codDesti:CodiEnGeneracio,resultat:bool=false);
+
+
+// =============================================================================
+// FUNCIONS D'AJUDA PER LA GENERACIÓ DE CODI ===================================
+// =============================================================================
+
+// PushAdreca ==================================================================
+// Posa l'adreça del resultat d'un codi a la pila
+// S'utilitza pel pas de paràmetres per referencia i per possar l'apuntador this
+
+Proc cod:CodiEnGeneracio.PushAdreca(adrecaDeValoraPila=false)=>
+{
+     if (cod.Tipus=:=TVoid) throw Exception("PushAdreca: Error Intern per no tenir resultat");
+    switch (cod.Adreca) {                
+        RefEtiqueta => {
+            Cod.Put(IPushAddressGVar,cod.Adreca);
+        }
+        Vector => {
+            if (Cod.Adreca[0]==0) Cod.Put(IPushAddressBVar,Cod.Adreca[1],Comentari("PushAdreca ",cod.Adreca, " de tipus ", TS.NomTipus(cod.Tipus)));
+            else Cod.Put(IPushAddressDispVar,Cod.Adreca[0],Cod.Adreca[1],Comentari("PushAdreca ",cod.Adreca, " de tipus ", TS.NomTipus(cod.Tipus)));
+        }
+        queue => {
+            cod.Put(ComentariLinea("PushAdreca Adreça calculada per codi de tipus ", TS.NomTipus(cod.Tipus)));
+            Cod.Codi.PutElements(Cod.Adreca);
+        }
+        AddressInStack => {}
+        StackAddress => {
+            cod.Put(IPushAddressSPVar,Cod.Adreca.Desp,Comentari("PushAdreca ",cod.Adreca, " de tipus ", TS.NomTipus(cod.Tipus)));
+        }
+        unbound => throw Exception("PushAdreca: Error Intern per no ser una adreça :",cod.Adreca);
+    }            
+    if (adrecaDeValoraPila) Cod.Adreca=AddressInStack;
+	else Cod.Adreca=unbound;
+}
+
+// PushValue =======================================================================
+// Posa el resultat d'un codi a la pila
+// Si es necessari cridarà al constructor per copia
+// S'utilitza per posar operands a la pila i per possar paràmetres a la pila
+
+Proc cod:CodiEnGeneracio.PushValue(tipusDesti:TipusDeDades=cod.Tipus)=>
+{
+    if (cod.Tipus=:=TVoid) throw Exception("PushValue: Error Intern per no tenir resultat");
+    if (cod.Adreca!=unbound) {
+        Var ConstructorPerCopia=tipusDesti.ConstructorPerCopia;
+        var nElements=tipusDesti.NombreDeElements();
+        var tipusElementsDesti=tipusDesti.TipusDelsElements();
+        var tipusElementsFont=cod.Tipus.TipusDelsElements();
+        if (ConstructorPerCopia==unbound && (cod.Tipus.MidaTipus==tipusDesti.MidaTipus || nElements==1)) {
+            // Copia el resultat a pila per simple copia de memoria.
+            switch (cod.adreca) {                
+                RefEtiqueta => {
+                    Cod.Put(IPushGVar,tipusDesti.MidaTipus(),cod.adreca,Comentari("PushValue ",cod.adreca," de tipus ",TS.NomTipus(tipusDesti)));
+                }
+                Vector => {
+                    if (Cod.adreca[0]==0) Cod.Put(IPushBVar,tipusDesti.MidaTipus(),Cod.adreca[1],Comentari("PushValue ",cod.Adreca," de tipus ",TS.NomTipus(tipusDesti)));
+                    else Cod.Put(IPushDispVar,tipusDesti.MidaTipus(),Cod.adreca[0],Cod.adreca[1],Comentari("PushValue ",cod.Adreca," de tipus ",TS.NomTipus(tipusDesti)));
+                }
+                queue => {
+                    cod.Put(ComentariLinea("PushValue Adreça calculada per codi ",tipusDesti));
+                    cod.codi.PutElements(cod.Adreca);
+                    cod.Put(IPushInd,tipusDesti.MidaTipus(),ComentariLinea("PushValue Adreça calculada per codi posar valor a la pila de tipus ",TS.NomTipus(tipusDesti)));
+                }
+                AddressInStack=> {
+                    cod.Put(IPushInd,tipusDesti.MidaTipus(),Comentari("PushValue Adreça a la pila de tipus ",TS.NomTipus(tipusDesti)));
+                }
+                StackAddress=> {
+                    if (cod.adreca.desp==0) {
+                        // Ya está en la pila, nada que hacer
+                        cod.Adreca=unbound;
+                    }
+                    else {
+                        throw Exception("ERROR INTERNO: No esta implementado StackAddress con desplazamiento diferencte de 0");
+                    }
+                }
+            }
+        }
+        else {
+            cod.Put(ComentariLinea("PushValue construccio per copia de tipus ",TS.NomTipus(tipusDesti)));
+            //  copia cridant al construtor per copia per cada objecte
+            //  o copia de un array de objectes de una classe derivada a un array d'objectes de classe base.
+            Cod.Put(IAddSP,-tipusDesti.MidaTipus()); // Reservar espai a la pila per la copia
+            cod.PushAdreca(); // Adreça del objecte o array dóbjectes a copiar
+            Cod.Put(IPushAddressSPVar,4); // Adreça de la pila on es guardará la copia
+            // Bucle de copia per crida al constructor per copia o per copia directe de memoria
+            for (i<-1..nElements) {
+                if (ConstructorPerCopia==unbound) {
+                    Cod.Put(IDup,8);
+                    Cod.Put(ICopyInd,tipusElementsDesti.MidaTipus());
+                }
+                else Cod.Put(ICall,RefEtiqueta(ConstructorPerCopia.Posicio));
+                if (i!=nElements) {
+                    Cod.Put(IIncSPValue,4,tipusElementsFont.MidaTipus());
+                    Cod.Put(IIncSPValue,0,tipusElementsDesti.MidaTipus());
+                }
+            }                        
+            Cod.Put(IAddSP,8);      
+        }
+        cod.Adreca=unbound;
+    }
+    else {
+        // El valor ja està  a la pila
+        // No fa falta fer res.
+    }
+    //cod.LValue=false;
+}
+
+// =============================================================================
+// PARAMETRES ==================================================================
+// =============================================================================
+
+// ComprovarPermisosParametres =================================================
+
+proc ComprovarPermisosParametres(dvParametres:List,Parametres:List)=>
+{
+    for (dvp<-reverse(dvParametres),p<-reverse(Parametres)) {
+        if (p.Referencia && !dvp.PermisEscriptura) throw Exception("No es pot escriure parametre per referencia ", p.Nom);
+    }
+}
+
+// MidaParametres ==============================================================
+
+fun MidaParametres(parametres:List)=>
+{
+    foldL(\+,0,[if (p.referencia) 4 else p.tipus.MidaTipus() | p<-parametres]);
+}
+
+// PosarParametresAPila ========================================================
+// Problema con los parámetros solo Out si son objectos con constructor y destructor
+// Si se les asigna valor una vez se puede considerar que se está haciendo una
+// construcción por copia ya que el objeto no existe. Entonces falla al hacer una
+// segunda asignación.
+// Solución: Los parámetros Out los construye el código que hace la llamada
+// y luego los destruye el el código que ha hecho la llamada.
+// Según esta idea la variable que representa un parámetro Out o In Out no se destruye
+// dentro del código de la función.
+// Solución final:
+// Todos los parámetros los construye el código que hace la llamada y los destruye
+// el código que hace la llamda despues de ejecutar la función. Sólo los pasados
+// por referencia no se tratarán de esta forma.
+// Antes llamada:
+// Los parámetros normales, in y in out se construyen por copia
+// Los parámetros out se construyen con el constructor por defecto. 
+// Los parámetros por refrencia solo se pone su dirección en la pila.
+// Despues de la llamada:
+// Los parámetros normales e in se destruyen.
+// Los parámetros out y in out se copian y luego se destruyen.
+// Los parámetros pasados por referencia solo se quita el apuntador de la pila.
+
+proc PosarParametresAPila(cod:CodiEnGeneracio,codisParametres:List,Parametres:List)=>
+{
+    for (cp<-reverse(codisParametres),p<-reverse(Parametres)) {
+        cod.Put(ComentariLinea("Posar parametre a la pila ",p.nom," i tipus ",TS.NomTipus(p.tipus)));
+        Cod.Concat(cp);
+        if (p.Referencia) Cod.PushAdreca();
+        else cod.PushValue(p.Tipus);
+    }
+}
+
+// TreureParametresDeLaPila ========================================================
+
+proc TreureParametresDeLaPila(cod:CodiEnGeneracio,Parametres:List)=>
+{
+    for (p<-Parametres) {
+        cod.Put(ComentariLinea("Treure parametre de la pila ",p.nom," i tipus ",TS.NomTipus(p.tipus)));
+        if (p.Referencia) Cod.Put(IAddSP,4,Comentari("Treure adreça paràmetre de la pila"));
+        else {
+            cod.Destruccio(StackAddress(0),p.Tipus);
+            cod.Put(IAddSP,p.Tipus.MidaTipus(),Comentari("Treure paràmetre de la pila"));
+        }
+    }
+}
+
+// ================================================================================
+// CONSTRUCCIO OBJECTES SEMANTIC ==================================================
+// ================================================================================
+
+// ComprovarConstruible =========================================================
+
+Proc t:TipusDeDades.ComprovarConstruible(dvParametres)=>
+{
+    var Constructors=t.Constructors();
+    if (Constructors==[]) {
+        if (dvParametres==[]) return; // No hi ha construcció
+        if (dvParametres.Length>1) throw SemanticError("No hi ha constructor pel tipus de dades ",TS.NomTipus(t)," amb ", dvParametres.Length," parametres");
+        if (!TipusElementP(dvParametres.Head.Tipus,t)) throw SemanticError("No hi ha constructor pel tipus de dades ",TS.NomTipus(t)," amb ", TS.NomTipus(dvParametres.Head.Tipus));
+   }
+    else {
+        var etsConstructor=SeleccionarMetode(Constructors,dvParametres);        
+        ComprovarPermisosParametres(dvParametres,etsConstructor.Parametres);
+    }
+}
+
+// ================================================================================
+// CONSTRUCCIO OBJECTES ===========================================================
+// ================================================================================
+
+// ConstruccioPerDefecte ==========================================================
+
+Proc cod:CodiEnGeneracio.ConstruccioPerDefecte(adreca:TipusAdreca,tipus:TipusDeDades)=>
+{
+    var TipusElements=tipus.TipusDelsElements();
+    var etsConstructor=tipus.ConstructorPerDefecte();
+    var nElements=tipus.NombreDeElements();
+    if (etsConstructor!=unbound) {
+        // construcció per crida a constructor
+        cod.Put(ComentariLinea("Construcció per defecte de ",TS.NomTipus(tipus)," a ", AdrecaAStr(Adreca)));
+        cod.SetAdreca(adreca,tipus);
+        cod.PushAdreca();
+        for (i<-1..nElements) {
+            // Crida al constructor
+            Cod.Put(ICall,RefEtiqueta(etsConstructor.Posicio));
+            // Incrementar el this.
+            if (i<nElements) Cod.Put(IIncSPValue,0,tipusElements.MidaTipus());
+        }
+        // Treure this
+        Cod.Put(IAddSP,4);
+    }
+}
+
+// ConstruccioPerCopia =========================================================
+// Construcció utilitzada en:
+//  - construcció per copia per crear el valor de retorno.
+//  - construcció per copia per passa arguments per valor. 
+// Paràmetres:
+// Cod: on es posa el codi de la construcció
+// adrecaDesti: on es construeix el valor: RefEtiqueta, (nivell,desp)
+// tDesti: tipus de dades a construir
+// codiFont: Códi que calcula el paràmetre del constructor per copia
+// Casos de construcció:
+// si tDesti es un tipus de dades simple, copia el valor
+// si tDesti es una classe sense constructor i el argument es de la mateixa clase o derivada copia el valor.
+// si tDesti es un array de classes sense constructor i el argument es un array de la clase derivada copia valors un a un.
+// si tDesti es un array de classes sense constructor i el argument es un array de la clase copia tots els valors de cop.
+// si tDesti te constructor cridará  al constructor per tots els objecte.
+
+// si t es una classe crida al constructor per copia
+// si t es un array que conte objectes, crida al constructor por copia per cada objecte
+// utilitzan els mateixos paràmetres.
+
+Proc cod:CodiEnGeneracio.ConstruccioPerCopia(adrecaDesti:TipusAdreca,tDesti:TipusDeDades)=>
+{
+    cod.Put(ComentariLinea("Construcció per copia de ",TS.NomTipus(tDesti)," a ", AdrecaAStr(AdrecaDesti)));
+    //if (!TipusPertany(codiFont.Tipus,tDesti)) throw Exception("Error de tipus de dades en construcció per copia ",(tDesti,codiFont.Tipus));
+    Var ConstructorPerCopia=tDesti.ConstructorPerCopia;
+    var nElements=tDesti.NombreDeElements();
+    var tipusElementsDesti=tDesti.TipusDelsElements();
+    var tipusElementsFont=cod.Tipus.TipusDelsElements();
+    if (ConstructorPerCopia==unbound && (cod.Tipus.MidaTipus==tDesti.MidaTipus || nElements==1)) {
+        cod.Tipus=tDesti;
+        cod.PushValue();
+        switch (adrecaDesti) {
+            RefEtiqueta=> cod.Put(IPopGVar,tDesti.MidaTipus(),adrecaDesti);
+            Vector=> if (adrecaDesti[0]==0) cod.Put(IPopBVar,tDesti.MidaTipus(),adrecaDesti[1]);
+                     else cod.Put(IPopDispVar,tDesti.MidaTipus(),adrecaDesti[0],adrecaDesti[1]);
+        }
+    }
+    else {
+        // Copia de objetos
+        cod.PushAdreca();
+        switch (adrecaDesti) {
+            RefEtiqueta=> cod.Put(IPushAddressGVar,adrecaDesti);
+            Vector=> if (adrecaDesti[0]==0) cod.Put(IPushAddressBVar,adrecaDesti[1]);
+                     else cod.Put(IPushAddressDispVar,adrecaDesti[0],adrecaDesti[1]);
+        }
+        for (i<-1..nElements) {
+            if (ConstructorPerCopia==unbound) {
+                Cod.Put(IDup,8);
+                Cod.Put(ICopyInd,tipusElementsDesti.MidaTipus());
+            }
+            else Cod.Put(ICall,RefEtiqueta(ConstructorPerCopia.Posicio),Comentari("Crida al constructor per copia"));
+            if (i!=nElements) {
+                Cod.Put(IIncSPValue,4,tipusElementsFont.MidaTipus());
+                Cod.Put(IIncSPValue,0,tipusElementsDesti.MidaTipus());
+            }
+        }                        
+        Cod.Put(IAddSP,8,Comentari("Treure de la pila la adreça del objecte copiat i la adeça on s'ha copiat"));
+    }
+}
+
+// Construccio =================================================================
+// Construeix un objecte o array d'objectes
+// Si te constructor el crida
+// El destí es una adreça
+
+// Construeix objectes amb o sense constructor
+// Constueix arrays d'objectes cridan al constructor tantes vegades com elements
+// tingui l'array. Si no hi ha constructor copia directament la memoria de un objecte
+// sobre tots els objectes de l'array.
+// Paràmetres:
+//  cod es on deixa el codi de construcció.
+//  adrecaDesti es on es construira l'objecte o array d'objectes: pot ser: RefEtiqueta o (nivell,desp)
+//  tDesti Tipus del que s'ha de construir
+//  codisParametres: paràmetres del constructor.
+
+// Us:
+//    - Construcció d'una variable
+//    - Construcció d'un objecte temporal a una expressió
+//    - Construcció a new
+
+Proc cod:CodiEnGeneracio.Construccio(adrecaDesti:TipusAdreca,tDesti:TipusDeDades,codisParametres:List)=>
+{
+	if (codisParametres.Length==1 && TipusPertany(codisParametres.head.Tipus,tDesti)) {
+		// Construccio per copia
+		cod.ConCat(codisParametres.head);
+		cod.ConstruccioPerCopia(adrecaDesti,tDesti);
+		return;
+	}
+    var TipusElementDesti=tDesti.TipusDelsElements();
+    var Constructors=tDesti.Constructors();
+    var nElements=tDesti.NombreDeElements();
+    if (Constructors==[]) {
+        if (codisParametres==[]) return; // No hi ha construcció
+        if (codisParametres.Length>1) throw SemanticError("No hi ha constructor pel tipus de dades ",tDesti," amb ", codisParametres.Length," parametres");
+        // construcció simple o múltiple element a element
+		
+        cod.Put(ComentariLinea("Construcció de ",TS.NomTipus(tDesti)," a ", AdrecaAStr(AdrecaDesti)));
+        var codFont=codisParametres.head;
+        if (!TipusElementP(codFont.Tipus,tDesti)) throw SemanticError("No hi ha constructor pel tipus de dades ",tDesti," amb ", codFont.Tipus);
+        codFont.PushValue();
+        cod.Concat(codFont);
+		
+        for (i<-1..nElements) {
+            switch (adrecaDesti) {
+                RefEtiqueta => 
+                    cod.Put(if (i<nElements) IStoreGVar else IPopGVar,TipusElementDesti.MidaTipus(),RefEtiqueta(adrecaDesti.eti,adrecaDesti.desp+(i-1)*TipusElementDesti.MidaTipus()));
+                Vector =>
+                    if (adrecaDesti[0]==0) cod.Put(if (i<nElements) IStoreBVar else IPopBVar,TipusElementDesti.MidaTipus(),adrecaDesti[1]+(i-1)*TipusElementDesti.MidaTipus());
+                    else cod.Put(if (i<nElements) IStoreDispVar else IPopDispVar,TipusElementDesti.MidaTipus(),adrecaDesti[0],adrecaDesti[1]+(i-1)*TipusElementDesti.MidaTipus());
+            }                
+        }
+        if (TipusElementDesti.MidaTipus<codFont.Tipus.MidaTipus()) cod.Put(IAddSP, codFont.Tipus.MidaTipus()-TipusElementDesti.MidaTipus());
+    }
+    else {
+        // construcció per crida a constructor
+        cod.Put(ComentariLinea("Construcció de ",TS.NomTipus(tDesti)," a ", AdrecaAStr(AdrecaDesti)));
+        var etsConstructor=SeleccionarMetode(Constructors,codisParametres);        
+        for (i<-1..nElements) {
+            // Crida al constructor
+			ComprovarPermisosParametres(codisParametres,etsConstructor.Parametres);
+            PosarParametresAPila(cod,codisParametres,etsConstructor.Parametres);
+            switch (adrecaDesti) {
+                RefEtiqueta => 
+                    cod.Put(IPushAddressGVar,RefEtiqueta(adrecaDesti.eti,adrecaDesti.Desp+(i-1)*TipusElementDesti.MidaTipus()));
+                Vector =>
+                    if (adrecaDesti[0]==0) cod.Put(IPushAddressBVar,adrecaDesti[1]+(i-1)*TipusElementDesti.MidaTipus());
+                    else cod.Put(IPushAddressDispVar,adrecaDesti[0],adrecaDesti[1]+(i-1)*TipusElementDesti.MidaTipus());
+            }
+            Cod.Put(Comentari("Posar l'adreça on es construirà l'objecte"));
+            Cod.Put(ICall,RefEtiqueta(etsConstructor.Posicio),Comentari("Crida al constructor"));
+            cod.Put(IAddSP,4, Comentari("Treure adreca del objecte construit de la pila"));
+            TreureParametresDeLaPila(cod,etsConstructor.Parametres);
+        }
+    }
+}
+
+// ================================================================================
+// DESTRUCCIO OBJECTES ============================================================
+// ================================================================================
+
+// Destruccio =====================================================================
+
+Proc cod:CodiEnGeneracio.Destruccio(adreca:TipusAdreca,t:TipusDeDades)=>
+{
+    var Destructor=t.Destructor();
+    if (Destructor=:=unbound) return;
+    cod.Put(ComentariLinea("Destruccio de ",TS.NomTipus(t)," a ", AdrecaAStr(Adreca)));
+    var nElements=t.NombreDeElements();
+    var tElements=t.TipusDelsElements();
+    for (i<-0 .. nElements-1) {
+        switch (adreca) {
+            RefEtiqueta => 
+                cod.Put(IPushAddressGVar,RefEtiqueta(adreca.Eti,adreca.Desp+i*tElements.MidaTipus()));
+            Vector =>
+                if (adreca[0]==0) cod.Put(IPushAddressBVar,adreca[1]+i*tElements.MidaTipus());
+                else cod.Put(IPushAddressDispVar,adreca[0],adreca[1]+i*tElements.MidaTipus());
+            StackAddress => 
+                cod.Put(IPushAddressSPVar,adreca.Desp+i*tElements.MidaTipus());
+            AddressInStack => 
+                if (i!=0) cod.Put(IIncSPValue,0,tElements.MidaTipus());
+        }                
+        if (nElements>1) cod.Put(Comentari("Posar adreça del objecte a destruir ",i," a la pila"));
+        else cod.Put(Comentari("Posar adreça del objecte a destruir a la pila"));
+        // Crida
+        Cod.Put(ICall,RefEtiqueta(Destructor.Posicio),Comentari("Crida al destructor"));
+        if (adreca!=AddressInStack) Cod.Put(IAddSP,4,Comentari("Treure adreça del objecte destruit de la pila"));            
+    }
+    if (adreca==AddressInStack) Cod.Put(IAddSP,4,Comentari("Treure adreça del objecte destruit de la pila"));            
+}
+
+// =============================================================================
+// DESTRUCCION D'AMBITS ========================================================
+// =============================================================================
+
+
+// DestruccioAmbit =============================================================
+
+proc cod:CodiEnGeneracio.DestruccioAmbit()=>
+{
+    Var p=ts.Pila;
+   for (ets<-ts.Pila) {
+        switch (ets) {
+            TSSeparador=> break;
+            ETSVariable=> {                
+                switch (ets.Posicio) {
+                    Etiqueta=> cod.Destruccio(RefEtiqueta(ets.posicio,0),ets.Tipus);
+                    int=> cod.Destruccio((0,ets.posicio),ets.Tipus);
+                    RefParametre=> {}
+                    DespCamp=> {}
+                }
+            }
+            ETSTipus => {}
+            ETSFuncio => {}
+            ETSBlock=> {}
+        }
+    }
+    TS.EliminarAmbit();
+}
+
+// DestruccionsPerReturn =============================================================
+// Destrueix les variables locals de la funció peró no destrueix els paràmetres
+
+proc cod:CodiEnGeneracio.DestruccionsPerReturn()=>
+{
+    // Cercar el separador posterior al separador de funció i per tant, posterior als paràmetres
+    var stop=ts.Pila;
+    Var p=ts.Pila;
+    while (!TypeP(TSSeparadorFuncio,p.Head)) {
+        if (TypeP(TSSeparador,p.Head)) stop=p;
+        p=p.Tail;   
+    }
+    // 
+    p=ts.Pila;
+    while (p!=stop) {
+        var ets=p.head;
+        // Nomes destruir variables locals
+        if (TypeP(ETSVariable,ets) && TypeP(int,ets.Posicio)) {
+            cod.Destruccio(PosicioAAdreca(ets.posicio,0),ets.Tipus);
+        }
+        p=p.tail;
+    }
+}
+
+// ==============================================================================
+// ASSIGNACIO ===================================================================
+// ==============================================================================
+
+// Assignacio ===================================================================
+// objecte cod (CodiEnGeneracio) calcula el valor a asignar.
+// codDesti te la adreça i el tipus de dades del valor que es modificarà.
+// a cod s'afegeig tot el codi de l'assignació
+// resultat indica si es vol mantenir el valor asignat com resultat de l'assignació
+// o si no volem resultat per cod.
+
+Proc cod:CodiEnGeneracio.Assignacio(codDesti:CodiEnGeneracio,resultat:bool=false)=>
+{
+    Var tipusFont=cod.Tipus;
+    Var tipusDesti=codDesti.Tipus;
+    if (!TipusPertany(tipusFont,tipusDesti)) throw SemanticError("Error de tipus de dades en =",(tipusFont,tipusDesti));
+    if (codDesti.Adreca==unbound) Throw Exception("Error intern: el codi no te adreça a assignació");
+     
+    var Assignador=tipusDesti.Assignador();    
+    if (Assignador=:=unbound) {
+        if (tipusDesti.TipusSimpleP()) {
+            // Posar el valor a la pila i copiar-lo al destí.
+            // si volem resultat deixar el valor a la pila.
+            Cod.PushValue();
+            Cod.Concat(codDesti);
+            switch (codDesti.Adreca) {
+                RefEtiqueta => cod.Put(if (resultat) IStoreGVar else IPopGVar,
+                                       tipusDesti.MidaTipus(),codDesti.Adreca);
+                Vector =>
+                    if (codDesti.Adreca[0]==0) cod.Put(if (resultat) IStoreBVar else IPopBVar,tipusDesti.MidaTipus(),codDesti.Adreca[1]);
+                    else cod.Put(if (resultat) IStoreDispVar else IPopDispVar,tipusDesti.MidaTipus(),codDesti.Adreca[0],codDesti.Adreca[1]);
+                Queue => {
+                    Cod.Codi.PutElements(codDesti.Adreca);
+                    cod.Put(if (resultat) IStoreInd else IPopInd,tipusDesti.MidaTipus());
+                }
+            }
+            cod.SetRValue(if (resultat) tipusFont else TVoid);
+            cod.Adreca=unbound;
+        }
+        else {
+            // copia array o classe
+            cod.PushAdreca();
+            if (resultat) cod.Put(IDup,4);
+            cod.ConCat(codDesti);
+            cod.PushAdreca();
+            if (tipusDesti.MidaTipus()==tipusFont.MidaTipus) {
+                cod.Put(ICopyInd,tipusDesti.MidaTipus());
+            }
+            else {
+                // Copia de objectes de classe derivada a classe base
+                var nElements=tipusDesti.NombreDeElements();
+                var tElements=tipusDesti.TipusDelsElements();
+                var tElementsExp=tipusFont.TipusDelsElements();
+                for (i<-1..nElements) {
+                    if (i!=nElements) Cod.Put(IDup,8);
+                    Cod.Put(ICopyInd,tElements.MidaTipus());
+                    if (i!=nElements) {
+                        Cod.Put(IIncSPValue,4,tElementsExp.MidaTipus());
+                        Cod.Put(IIncSPValue,0,tElements.MidaTipus());
+                    }
+                }                        
+            }
+            if (resultat) {
+                cod.Tipus=tipusFont;
+                cod.Adreca=AddressInStack;
+            }
+            else {
+                cod.Tipus=TVoid;
+                cod.Adreca=unbound;
+            }
+            cod.PermisEscriptura=false;                        
+        }                    
+    }
+    else {
+        var nElements=tipusDesti.NombreDeElements();
+        var tElements=tipusDesti.TipusDelsElements();
+        var tElementsExp=tipusFont.TipusDelsElements();
+        Cod.PushAdreca();
+        codDesti.PushAdreca();
+        if (Resultat) {
+            TS.VarSz=TS.VarSz+4;                            
+            Cod.Put(IStoreBVar,4,-TS.VarSz);                        
+        }
+        Cod.Concat(codDesti);
+        for (i<-1..nElements) {
+            Cod.Put(ICall,RefEtiqueta(Assignador.Posicio),Comentari("Cridar a l'assignador per a l'objecte",if(nElements>1) i else ""));
+            if (i!=nElements) {
+                Cod.Put(IIncSPValue,4,tElementsExp.MidaTipus(),Comentari("incrementar adreça del objecte font de la assignació"));
+                Cod.Put(IIncSPValue,0,tElements.MidaTipus(),Comentari("incrementar adreça del objecte destí de la assignació"));
+            }
+        }
+        // Treure parametres de la pila
+        Cod.Put(IAddSP,8,Comentari("Treure paràmetres assignació de la pila"));
+        if (resultat) {
+            cod.Tipus=tipusFont;
+            Cod.Adreca=(-TS.VarSz,0);
+        }
+        else {
+            cod.Tipus=TVoid;
+            Cod.Adreca=unbound;
+        }
+    }
+    cod.PermisEscriptura=false;
+}
+
+// ==============================================================================
+// CREACIO DE CONSTRUCTORS, DESTRUCTORS Y ASSIGNADORS CLASSE ====================
+// ==============================================================================
+
+// ConstruccioCamps =============================================================
+
+Proc classe:TClasse.ConstruccioCamps(Cod:CodiEnGeneracio)=> {  //-------------------------------------------------Generació codi CamposUnion-------------------------------------------------------------------- 
+    if (classe.Base.Constructors()!:=[]) {
+        cod.Construccio((8,0),classe.base,[]);
+    }
+    for (ets<-classe.membres,
+    TypeP(ETSVariable,ets),
+    ets.Tipus.Constructors()!:=[]) {
+        if (!-](u <- CampsUnioGenerals, u == ets)) {
+            cod.Construccio((8,ets.Posicio.Desp),ets.Tipus,[]);
+        }
+    }
+}
+
+// ConstruccioPerCopiaCamps =====================================================
+
+Proc classe:TClasse.ConstruccioPerCopiaCamps(Cod:CodiEnGeneracio)=>
+{
+    Proc Copia(DespCamp,t)=>
+    {
+        var ConstructorPerCopia=t.ConstructorPerCopia();    
+        if (ConstructorPerCopia!:=unbound) {
+            var nElements=t.NombreDeElements();
+            var tElements=t.TipusDelsElements();
+            for (i<-0..nElements-1) {
+                Cod.Put(IPushAddressDispVar,12,DespCamp+i*tElements.MidaTipus());
+                Cod.Put(IPushAddressDispVar,8,DespCamp+i*tElements.MidaTipus());
+                Cod.Put(ICall,RefEtiqueta(ConstructorPerCopia.Posicio));
+                Cod.Put(IAddSP,8);        
+            }
+        }
+        else {
+            // Copia de dades sense construccio
+            Cod.Put(IPushDispVar,t.MidaTipus(),12,DespCamp);
+            Cod.Put(IPopDispVar,t.MidaTipus(),8,DespCamp);
+        }
+    }
+    
+    if (classe.base!:=TVoid) Copia(0,classe.base);
+    for (ets<-classe.membres,TypeP(ETSVariable,ets)) Copia(ets.Posicio.Desp,Ets.Tipus);
+}
+
+// AssignadorCamps =====================================================
+
+Proc classe:TClasse.AssignadorCamps(Cod:CodiEnGeneracio)=>
+{
+    Proc Copia(DespCamp,t)=>
+    {
+        var Assignador=t.Assignador();    
+        if (Assignador!:=unbound) {
+            var nElements=t.NombreDeElements();
+            var tElements=t.TipusDelsElements();
+            for (i<-0..nElements-1) {
+                Cod.Put(IPushAddressDispVar,12,DespCamp+i*tElements.MidaTipus());
+                Cod.Put(IPushAddressDispVar,8,DespCamp+i*tElements.MidaTipus());
+                Cod.Put(ICall,RefEtiqueta(Assignador.Posicio));
+                Cod.Put(IAddSP,8);        
+            }
+        }
+        else {
+            // Copia de dades sense construccio
+            Cod.Put(IPushDispVar,t.MidaTipus(),12,DespCamp);
+            Cod.Put(IPopDispVar,t.MidaTipus(),8,DespCamp);
+        }
+    }
+    
+    if (classe.base!:=TVoid) Copia(0,classe.base);
+    for (ets<-classe.membres,TypeP(ETSVariable,ets)) Copia(ets.Posicio.Desp,Ets.Tipus);
+}
+
+// DestruccioCamps =============================================================
+
+Proc classe:TClasse.DestruccioCamps(Cod:CodiEnGeneracio)=>  //-------------------------------------------------Generació codi CamposUnion-------------------------------------------------------------------- 
+{
+    for (ets<-classe.membres,
+        TypeP(ETSVariable,ets),
+        ets.Tipus.Destructor()!:=unbound) {
+    
+        if (!-](u <- CampsUnioGenerals, u == ets)) {
+            cod.Destruccio((8,ets.Posicio.Desp),ets.Tipus);
+        }
+    }
+    if (classe.base!:=TVoid) {
+        cod.Destruccio((8,0),classe.base);
+    }
+}
+
+// GRAMATICA ===================================================================
+
+Proc Compila(FileName:String,St=Unbound,VeureCodiGenerat=false,VeureCodiExecucio=false)=>
+{
+    ParserErrorNLin=Unbound;
+    ParserErrorLine=Unbound;
+    ParserErrorNCol=Unbound;
+    ParserErrorException=unbound;
+    Var OldScanInput=ScanInput;
+    if (TypeP(stream,St)) ScanInput=St;
+    else ScanInput=Open(FileName,SMIn,[],SourcePaths);
+    cout.PrintLN("--------------------------------------------------------");
+    cout.PrintLN("Analitzant ",FileName);
+    cout.flush();
+    Var Oldline=system$CSLGetScanLineNumber();
+    Var OldNLin=system$CSLGetParserLineNumber();
+    system$CSLSetScanLineNumber(1);
+    SortidaSemantic=OutStrStream();
+    TRY {
+    BNF_PARSER <programa()>
+    TERMINALS
+        + - * / identificador numero caracter string ( ) =
+        == != > < >= <= ^
+        ! && ||
+        , ; : . & "::"
+        Type var Const Function Procedure constructor destructor
+        Integer Real Character bool class array of "[" "]" "{" "}"
+        if then else while do return
+        Print PrintLn Exit
+        delete new
+        div mod
+        true false null this operator
+        IMPRIMIR_TAULA_DE_SIMBOLS
+    BNF
+    // <Programa> ==============================================================
+    Rule <programa>::=
+        @CodiGlobal=CodiEnGeneracio();
+        @CodiInicialitzacioGlobal=CodiEnGeneracio();
+        @CodiDestruccioGlobal=CodiEnGeneracio();
+        @TS=TaulaSimbols();
+        {
+            <DecFun>
+            | <DecProc>
+            | <DecConstructor>
+            | <DecDestructor>
+            | <DecVar(CodiInicialitzacioGlobal)>
+            | <DecTipus>
+            | <DecClasse>
+            | IMPRIMIR_TAULA_DE_SIMBOLS ";" @ts.Imprimir(); @ts.ImprimirSemantic(SortidaSemantic);
+        }
+		@VerifyEOFReached();
+        @{
+            Var EtssMain=TS.Buscar("main");
+            if (EtssMain.Length==0) throw SemanticError("Falta declarar el procediment Main");
+            Search (EtsMain<-EtssMain,TypeP(ETSFuncio,EtsMain) && EtsMain.TipusRetorn=:=TVoid && EtsMain.Parametres==[]) {
+                CodiDestruccioGlobal.DestruccioAmbit();
+                var tmp=CodiEnGeneracio();
+                tmp.Concat(CodiInicialitzacioGlobal);
+                tmp.Put(ICall,RefEtiqueta(EtsMain.Posicio));
+                tmp.Concat(CodiDestruccioGlobal);
+                tmp.Put(IExit);
+                tmp.Concat(CodiGlobal);
+                CodiGlobal=tmp;
+            }
+            else throw SemanticError("El procediment Main no s'ha declarat correctament");
+        }
+		
+    // <DecTipus> ==============================================================
+    Rule <DecTipus>::= @var nom,ets;
+        "Type" identificador#(nom)
+        @TS.ComprovarDuplicat(nom);
+        @ets=ETSTipus(nom,Unbound);
+        @TS.Insertar(ets);
+        = <tipus(ets.Tipus,nom)> ";"
+
+    // <Tipus> =================================================================
+    Rule <tipus(&t,NomRec)>::=
+        (
+            Integer @t=TInt;
+            | Real @t=TReal;
+            | Character @t=TChar;
+            | Bool @t=TBool;
+            | @t=TApuntador(Unbound);
+              ^ <tipus(t.TipusBase,Unbound)>
+            | @var sz;
+              Array "[" 
+                numero#(sz) 
+              "]" of
+              @t=TArray(sz,Unbound);
+              <tipus(t.TipusElements,NomRec)>
+            | @var nom;
+              identificador#(nom)
+               @{
+                   var ets=TS.Buscar(nom).Head;
+                   if (!TypeP(ETSTipus,ets))
+                        throw SemanticError(nom," no és un tipus de dades");
+                   if (ets.Nom==NomRec)
+                        throw SemanticError("Declaració recursiva del tipus de dades ",nom);
+                   t=ets.Tipus;
+               }
+        )
+        @AssociarAtribut("Tipus=",Ts.NomTipus(t));
+
+    // <DecClasse> =============================================================
+    Rule <DecClasse>::=@var nom,base=TVoid;
+        "Class" Identificador#(nom)
+        @TS.ComprovarDuplicat(nom);
+        [
+            @var nomBase;
+            ":" Identificador#(nomBase) 
+            @base=TS.BuscarClasse(nomBase);
+        ]
+        @var classe=TClasse(base);
+        @var ets=ETSTipus(nom,classe);
+        @TS.Insertar(ets);
+        @TS.NouAmbit(ets.Tipus);
+        @var despMem = classe.Base.MidaTipus();
+        "{" { <ElementClasse(classe,nom, despMem)> } "}"
+        @TS.EliminarAmbit();
+        @{
+            classe.membres=reverse(classe.membres);
+            
+            var ETSCreades=[];
+            
+            // Creación del constructor por defecto i per copia ----------------
+            if (classe.Constructors()=:=[]) {
+                if ((classe.Base.Constructors()!:=[]) ||
+                    -](ets<-classe.membres,
+                    TypeP(ETSVariable,ets),
+                    ets.Tipus.Constructors()!:=[])) {
+                    // Crear el constructor per defecte
+                    try {
+                        classe.ComprovarConstruiblePerDefecte();
+                        var ETSConstructor=ETSFuncio(TFConstructor,nom,classe,[],TVoid);
+                        ETSConstructor.TeCos=true;
+                        ETSConstructor.Posicio=etiqueta(ts.NomDecorat(ETSConstructor));
+                        ETSConstructor.DespRetorn=12;
+                        ETSCreades=ETSConstructor::ETSCreades;
+                        CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ETSConstructor)++" -------------------------------------------------------------------------------")[..80]));
+                        CodiGlobal.put(DefEtiqueta(ETSConstructor.Posicio));
+                        CodiGlobal.Put(ILink,0,Comentari("Reservar espai per variables locals"));
+                        classe.ConstruccioCamps(CodiGlobal);
+                        CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+                        CodiGlobal.put(IRet,Comentari("Sortir de constuctor per defecte")); 
+                    }
+                    catch (ex) {}
+                    // Crear el constructor per copia
+                    try {
+                        classe.ComprovarConstruiblePerCopia();
+                        var ETSConstructor=ETSFuncio(TFConstructor,nom,classe,[Parametre("Font",classe,true,false,false)],TVoid);
+                        ETSConstructor.TeCos=true;
+                        ETSConstructor.Posicio=etiqueta(ts.NomDecorat(ETSConstructor));
+                        ETSConstructor.DespRetorn=16;
+                        ETSCreades=ETSConstructor::ETSCreades;
+                        CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ETSConstructor)++" -------------------------------------------------------------------------------")[..80]));
+                        CodiGlobal.put(DefEtiqueta(ETSConstructor.Posicio));
+                        CodiGlobal.Put(ILink,0,Comentari("Reservar espai per variables locals"));
+                        classe.ConstruccioPerCopiaCamps(CodiGlobal);
+                        CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+                        CodiGlobal.put(IRet,Comentari("Sortir de constuctor per copia")); 
+                    }
+                    catch (ex) {}
+                }
+            }
+            // Crear assignador per defecte ------------------------------------
+            if (classe.Constructors()=:=[]) {
+                
+                if (classe.Base.AssignadorDefinitP() || 
+                    -](ets<-classe.membres, TypeP(ETSVariable,ets), ets.Tipus.AssignadorDefinitP())) {
+                    // Crear el assignador
+                    try {
+                        classe.ComprovarAssignable();
+                        var ETSAsignador=ETSFuncio(TFProcediment,"operator=",classe,[Parametre("Font",classe,true,false,false)],TVoid);
+                        ETSCreades=ETSAsignador::ETSCreades;
+                        ETSAsignador.TeCos=true;
+                        ETSAsignador.Posicio=etiqueta(ts.NomDecorat(ETSAsignador));
+                        ETSAsignador.DespRetorn=16;
+                        CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ETSAsignador)++" -------------------------------------------------------------------------------")[..80]));
+                        CodiGlobal.put(DefEtiqueta(ETSAsignador.Posicio));
+                        CodiGlobal.Put(ILink,0,Comentari("Reservar espai per variables locals"));
+                        classe.AssignadorCamps(CodiGlobal);
+                        CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+                        CodiGlobal.put(IRet,Comentari("Sortir d'assignador"));                    
+                    }
+                    catch (ex) {}
+                }
+            }
+            for (c<-reverse(ETSCreades)) classe.Insertar(c);
+            // Crear destructor por defecto ------------------------------------
+            if (classe.Destructor()=:=unbound) {
+                if (-](ets<-classe.membres,
+                    TypeP(ETSVariable,ets),
+                    ets.Tipus.TipusDelsElements().Destructor()!:=unbound)) {
+                    // Crear el destructor dels camps
+                    var ETSDestructor=ETSFuncio(TFDestructor,nom,classe,[],TVoid);
+                    ETSDestructor.TeCos=true;
+                    ETSDestructor.Posicio=etiqueta(ts.NomDecorat(ETSDestructor));
+                    ETSDestructor.DespRetorn=12;
+                    classe.Insertar(ETSDestructor);        
+                    CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ETSDestructor)++" -------------------------------------------------------------------------------")[..80]));
+                    CodiGlobal.put(DefEtiqueta(ETSDestructor.Posicio));
+                    CodiGlobal.Put(ILink,0,Comentari("Reservar espai per variables locals"));
+                    classe.DestruccioCamps(CodiGlobal);
+                    CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+                    CodiGlobal.put(IRet,Comentari("Sortir de destuctor per defecte"));                    
+                }
+            }
+        }
+
+    // <ElementClasse> ========================================================= //-------------------------------------------------Generació codi CamposUnion--------------------------------------------------------------------
+    Rule <ElementClasse(classe:TClasse,nomRec, &despMem)>::= 
+        // Camp Normal ---------------------------------------------------------
+        @var nom,t;
+        identificador#(nom) 
+        @classe.ComprovarDuplicat(nom);
+        : <tipus(t,nomRec)> ";" 
+        @var etsNormal = ETSVariable(nom,t);
+        @etsNormal.Posicio = DespCamp(despMem);
+        @despMem = despMem + t.MidaTipus();
+        @classe.Insertar(etsNormal);
+        |
+        // CamposUnion ---------------------------------------------------------
+        "["
+        @var maxUnio = 0;
+        {
+            @var nomUnion, tUnion;
+            identificador#(nomUnion)
+            ":" <tipus(tUnion,nomRec)> ";"
+            @classe.ComprovarDuplicat(nomUnion);
+            @var etsUnio = ETSVariable(nomUnion, tUnion);
+            @etsUnio.Posicio = DespCamp(despMem);
+            
+            @CampsUnioGenerals = nomUnion :: CampsUnioGenerals; 
+            
+            @classe.Insertar(etsUnio);
+        }
+        "]"
+        @despMem = despMem + maxUnio;
+        
+        
+
+
+      
+        |
+        // Funcio --------------------------------------------------------------
+        @var nom,ClasseBase=classe,parametres,retorn;
+        <PrototipusFuncio(nom,ClasseBase,parametres,retorn)> ";"
+        @if (classe!:=ClasseBase) throw SemanticError("No se puede cambiar la clase a la que pertenece un método");
+        @var ets=ETSFuncio(TFFuncio,nom,ClasseBase,Parametres,retorn);
+        @classe.ComprovarDuplicat(ets);
+        @ets.Posicio=etiqueta(ts.NomDecorat(ets));
+        @ets.DespRetorn=MidaParametres(parametres)+12;
+        @classe.Insertar(ets);        
+
+        |
+        // Procedure -----------------------------------------------------------
+        @var nom,ClasseBase=classe,parametres;
+        <PrototipusProcediment(nom,ClasseBase,parametres)> ";"
+        @if (classe!:=ClasseBase) throw SemanticError("No se puede cambiar la clase a la que pertenece un método");
+        @var ets=ETSFuncio(TFProcediment,nom,ClasseBase,Parametres,TVoid);
+        @classe.ComprovarDuplicat(ets);
+        @ets.Posicio=etiqueta(ts.NomDecorat(ets));
+        @ets.DespRetorn=MidaParametres(parametres)+12;
+        @classe.Insertar(ets);        
+        
+        | 
+        // Constructor ---------------------------------------------------------
+        @var nom,parametres;
+        <PrototipusConstructor(nom,parametres)> ";"
+        @if (TS.BuscarClasse(nom)!:=classe) throw SemanticError("No se puede cambiar la clase a la que pertenece un constructor");
+        @var ets=ETSFuncio(TFConstructor,nom,classe,Parametres,TVoid);
+        @classe.ComprovarDuplicat(ets);
+        @ets.Posicio=etiqueta(ts.NomDecorat(ets));
+        @ets.DespRetorn=MidaParametres(parametres)+12;
+        @classe.Insertar(ets);        
+
+        |
+        // Destructor ----------------------------------------------------------
+        @var nom;
+        <PrototipusDestructor(nom)> ";"
+        @if (TS.BuscarClasse(nom)!:=classe) throw SemanticError("No se puede cambiar la clase a la que pertenece un destructor");
+        @var ets=ETSFuncio(TFDestructor,nom,classe,[],TVoid);
+        @classe.ComprovarDuplicat(ets);
+        @ets.Posicio=etiqueta(ts.NomDecorat(ets));
+        @ets.DespRetorn=12;
+        @classe.Insertar(ets);        
+
+    // <PrototipusFuncio> ======================================================
+    Rule <PrototipusFuncio(&nom,&ClasseBase,&parametres,&retorn)>::= 
+        function identificador#(nom) 
+        [
+            @ClasseBase=TS.BuscarClasse(nom); 
+            "::" identificador#(nom)
+        ]
+        <DecParametres(parametres)> ":" <Tipus(retorn,unbound)>
+        
+    // <PrototipusProcediment> =================================================
+    Rule <PrototipusProcediment(&nom,&ClasseBase,&parametres)>::= 
+        procedure 
+        (
+            identificador#(nom)
+            [  
+               @ClasseBase=TS.BuscarClasse(nom); 
+               "::" 
+               (
+                   identificador#(nom) |
+                   operator = @nom="operator=";
+               )
+            ]
+            | 
+            operator = @nom="operator=";
+        )
+        <DecParametres(parametres)>
+                
+    // <PrototipusConstructor> =================================================
+    Rule <PrototipusConstructor(&nom,&parametres)>::= 
+        Constructor identificador#(nom) 
+        <DecParametres(parametres)>
+
+    // <PrototipusDestructor> ==================================================
+    Rule <PrototipusDestructor(&nom)>::= 
+        Destructor identificador#(nom) 
+        "(" ")"
+        
+    // <DecParametres> =========================================================
+    Rule <DecParametres(&LlistaParametres)>::=
+            @LlistaParametres=[];
+            "(" [<DecParametre(LlistaParametres)> { , <DecParametre(LlistaParametres)> }] ")"
+            @LlistaParametres=reverse(LlistaParametres);
+
+    // <DecParametre> ==========================================================
+    Rule <DecParametre(&ListaParametres)>::=
+            @var nom, t, referencia=false;
+            [ & @referencia=true; ]
+            identificador#(nom) 
+            @if (-](p<-ListaParametres,p.nom==nom)) throw SemanticError("Parametre ",nom," duplicat");
+            : <tipus(t,Unbound)>
+			@if (!referencia) t.ComprovarConstruiblePerCopia();
+            @ListaParametres=Parametre(nom,t,referencia)::ListaParametres;
+
+   // <DecVar> =================================================================
+   // var  identificador ({,identificador}:<tipus> [<parametres> | =<init>] | = <exp>) {, identificador ({,identificador}:<tipus> [<parametres> | =<init>] | = <exp>) } ";"
+   // <DecVar>::=var <VarElement> {, <VarElement> } ";"
+   // <VarElement>::=identificador ({,identificador}:<tipus> [<parametres> | =<init>] | = <exp>)
+   
+   Rule <DecVar(cod)>::= @Var t, nom, ets, variables_list=[]; //---------------------------------------------------------------------------------------------------------------------- DeclaracionMultiplesVariablesMismoTipo
+        var
+        
+        //llegir 1a variab
+        identificador#(nom)
+        @TS.ComprovarDuplicat(nom);
+        
+        
+        (
+        
+        @ets = ETSVariable(nom, Unbound); 
+        @TS.Insertar(ets);
+        @variables_list = ets :: variables_list; 
+        
+        //si hi ha mes varibales
+        {
+            "," identificador#(nom)
+            @TS.ComprovarDuplicat(nom);
+            @ets = ETSVariable(nom, Unbound);
+            @TS.Insertar(ets);
+            @variables_list = ets :: variables_list;
+            
+        }
+        
+
+        ":" <tipus(t,Unbound)> 
+        @var codisParametres=[];
+        [ <parametres(codisParametres)> ]
+        
+        @{
+            t.ComprovarConstruible(codisParametres);
+            
+    
+            for (v_actual <- reverse(variables_list)) 
+            {
+            
+            
+                v_actual.Tipus = t; 
+                
+                var adreca;
+                if (ts.VarSz==Unbound) 
+                {
+                    v_actual.Posicio = etiqueta(v_actual.Nom);
+                    CodiGlobal.put(Espai(v_actual.Posicio, t.MidaTipus()));
+                    adreca = RefEtiqueta(v_actual.Posicio);
+                }
+                else 
+                {
+                    
+                    ts.VarSz = ts.VarSz + t.MidaTipus();
+                    v_actual.Posicio = -ts.VarSz;
+                    adreca = (0, v_actual.Posicio);
+                }
+                
+                
+                
+                cod.Construccio(adreca, t, codisParametres);
+            }
+            
+        }  
+        
+        
+        
+        ";"
+            
+            
+        |
+            //------------------------------------------------------------------------------------------------------------------------DeclaracionVariableAuto
+"=" <Expressio(cod, true)>
+            @{
+               
+               
+                t = cod.Tipus; 
+                t.ComprovarConstruiblePerCopia(); 
+                
+                var adreca, Posicio;
+                
+                if (ts.VarSz==Unbound) 
+                {
+                    Posicio = etiqueta(nom);
+                    CodiGlobal.put(Espai(Posicio, t.MidaTipus()));
+                    
+                    adreca = RefEtiqueta(Posicio);
+                    
+                }
+                
+                else 
+                {
+                    ts.VarSz = ts.VarSz + t.MidaTipus();
+                    Posicio = -ts.VarSz;
+                    
+                    adreca = (0, Posicio);
+                }
+                
+                TS.Insertar(ETSVariable(nom, t, true, true, Posicio)); 
+                cod.ConstruccioPerCopia(adreca, t); 
+                
+            }
+            
+            
+            ";"
+            
+        )
+        
+        
+        
+        
+    // <DecFun> ================================================================
+    Rule <DecFun>::= 
+        @var nom, classe=TVoid, parametres, tipusRetorn;
+        <PrototipusFuncio(nom,classe, parametres, tipusRetorn)>         
+        @{
+            var ets=ETSFuncio(TFFuncio,nom,classe,parametres,tipusRetorn);
+            if (classe=:=TVoid) {
+                TS.ComprovarDuplicat(ets);                
+                ets.Posicio=etiqueta(ts.NomDecorat(ets));
+                TS.Insertar(ets);
+            }
+            else ets=classe.BuscarPrototipus(ets);
+            if (ets.TeCos) throw SemanticError("Definició de funció duplicada");
+            ets.TeCos=true;
+             // desplaçament inicial dels parametres
+            var desp=8+ts.Nivell*4+if (ets.Classe=:=TVoid) 0 else 4;
+            TS.NouAmbit(ets);
+            for (p<-parametres) {
+                if (p.referencia) {
+                    TS.Insertar(ETSVariable(p.nom,p.tipus,true,true,RefParametre(desp)));
+                    desp=desp+4;
+                }
+                else {
+                    TS.Insertar(ETSVariable(p.nom,p.tipus,true,true,desp));
+                    desp=desp+p.tipus.MidaTipus();
+                }
+            }
+            ets.DespRetorn=desp;
+            Var cod=CodiEnGeneracio();
+        }
+        <bloc(cod)>
+        @{
+            CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ets)++" -------------------------------------------------------------------------------")[..80]));
+            // Inici de la funció
+            CodiGlobal.put(DefEtiqueta(ets.Posicio));
+            CodiGlobal.Put(ILink,TS.VarSz,Comentari("Reservar espai per variables locals"));
+            // Cos de la funció
+            CodiGlobal.Concat(cod);
+            // Final de la funció
+            //DestruccioAmbit(CodiGlobal);
+            TS.EliminarAmbit();
+            CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+            CodiGlobal.put(IRet,Comentari("Sortir de funció"));
+        }
+
+    // <DecProc> ===============================================================
+    Rule <DecProc>::=
+        @var nom, classe=TVoid, parametres;
+        <PrototipusProcediment(nom,classe, parametres)>         
+        @{
+            var ets=ETSFuncio(TFProcediment,nom,classe,parametres,TVoid);
+            if (classe=:=TVoid) {
+                TS.ComprovarDuplicat(ets);
+                ets.Posicio=etiqueta(ts.NomDecorat(ets));
+                TS.Insertar(ets);
+            }
+            else ets=classe.BuscarPrototipus(ets);
+            if (ets.TeCos) throw SemanticError("Definició de procediment duplicat");
+            ets.TeCos=true;
+             // desplaçament inicial dels parametres
+            var desp=8+ts.Nivell*4+if (ets.Classe=:=TVoid) 0 else 4;
+            TS.NouAmbit(ets);
+            for (p<-parametres) {
+                if (p.referencia) {
+                    TS.Insertar(ETSVariable(p.nom,p.tipus,true,true,RefParametre(desp)));
+                    desp=desp+4;;
+                }
+                else {
+                    TS.Insertar(ETSVariable(p.nom,p.tipus,true,true,desp));
+                    desp=desp+p.tipus.MidaTipus();
+                }
+            }
+            ets.DespRetorn=desp;
+            Var cod=CodiEnGeneracio();
+        }
+        <bloc(cod)>
+        @{
+            // Inici de la funció
+            CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ets)++" -------------------------------------------------------------------------------")[..80]));
+            CodiGlobal.put(DefEtiqueta(ets.Posicio));
+            CodiGlobal.Put(ILink,TS.VarSz,Comentari("Reservar espai per variables locals"));
+            // Cos de la funció
+            CodiGlobal.Concat(cod);
+            // Final de la funció
+            //DestruccioAmbit(CodiGlobal);
+            TS.EliminarAmbit();
+            CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+            CodiGlobal.put(IRet,Comentari("Sortir de procediment"));
+        }
+        
+    // <DecConstructor> ========================================================
+    Rule <DecConstructor>::= 
+        @var nom, parametres;
+        <PrototipusConstructor(nom,parametres)>         
+        @{
+            var ets=ETSFuncio(TFConstructor,nom,ts.BuscarClasse(nom),parametres,TVoid);
+            ets=ets.classe.BuscarPrototipus(ets);
+            if (ets.TeCos) throw SemanticError("Definició de constructor duplicat");
+            ets.TeCos=true;
+             // desplaçament inicial dels parametres
+            var desp=12;
+            TS.NouAmbit(ets);
+            for (p<-parametres) {
+                if (p.referencia) {
+                    TS.Insertar(ETSVariable(p.nom,p.tipus,true,true,RefParametre(desp)));
+                    desp=desp+4;;
+                }
+                else {
+                    TS.Insertar(ETSVariable(p.nom,p.tipus,true,true,desp));
+                    desp=desp+p.tipus.MidaTipus();
+                }
+            }
+            Var cod=CodiEnGeneracio();
+        }
+        <bloc(cod)>
+        @{
+            // Inici de la funció
+            CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ets)++" -------------------------------------------------------------------------------")[..80]));
+            CodiGlobal.put(DefEtiqueta(ets.Posicio));
+            CodiGlobal.Put(ILink,TS.VarSz,Comentari("Reservar espai per variables locals"));
+            ets.classe.ConstruccioCamps(CodiGlobal);
+            // Cos de la funció
+            CodiGlobal.Concat(cod);
+            // Final de la funció
+            //DestruccioAmbit(CodiGlobal);
+            TS.EliminarAmbit();
+            CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+            CodiGlobal.put(IRet,Comentari("Sortir de constructor"));
+        }
+    
+    // <DecDestructor> =========================================================
+    Rule <DecDestructor>::=
+        @var nom;
+        <PrototipusDestructor(nom)>         
+        @{
+            var ets=ETSFuncio(TFDestructor,nom,ts.BuscarClasse(nom),[],TVoid);
+            ets=ets.classe.BuscarPrototipus(ets);
+            if (ets.TeCos) throw SemanticError("Definició de destructor duplicat");
+            ets.TeCos=true;
+            TS.NouAmbit(ets);
+            Var cod=CodiEnGeneracio();
+        }
+        <bloc(cod)>
+        @{
+            // Inici de la funció
+            CodiGlobal.Put(ComentariIniciLinea((TS.StringETSFuncio(ets)++" -------------------------------------------------------------------------------")[..80]));
+            CodiGlobal.put(DefEtiqueta(ets.Posicio));
+            CodiGlobal.Put(ILink,TS.VarSz,Comentari("Reservar espai per variables locals"));
+            // Cos de la funció
+            CodiGlobal.Concat(cod);
+            // Final de la funció
+            //DestruccioAmbit(CodiGlobal);
+            TS.EliminarAmbit();
+            ets.classe.DestruccioCamps(CodiGlobal);
+            CodiGlobal.put(IUnlink,Comentari("Treure variables locals de la pila"));
+            CodiGlobal.put(IRet,Comentari("Sortir de destructor"));
+        }
+
+    // <bloc> ==================================================================
+    Rule <bloc(cod:CodiEnGeneracio)>::= 
+    "{"
+        @TS.NouAmbit();
+        {
+            <DecFun>
+            | <DecProc>
+            | <DecVar(cod)>
+            | <instruccio(cod)>
+        }
+        @cod.DestruccioAmbit();
+    "}"
+
+    // <instruccio> ============================================================
+    Rule <instruccio(cod:CodiEnGeneracio)>::=
+        // Expressió -----------------------------------------------------------
+        @cod.Put(ComentariLinea("Linea ",CSLGetScanLineNumber(),": ","Expressio a instruccio"));
+        <Expressio(cod,false)> ";" 
+
+        |
+        // return --------------------------------------------------------------
+        @cod.Put(ComentariLinea("Return"));
+        return ( 
+            <Expressio(cod,true)>
+            @{
+                if (!TipusPertany(cod.Tipus,ts.Funcio.TipusRetorn)) Throw SemanticError("Error de tipus a return");
+                cod.ConstruccioPerCopia(
+                    if (ts.Funcio.TipusRetorn.TipusSimpleP()) (0,ts.Funcio.DespRetorn) else (ts.Funcio.DespRetorn,0),
+                    ts.Funcio.TipusRetorn
+                );
+            }
+
+            | $ @if (ts.Funcio.TipusRetorn!:=TVoid) Throw SemanticError("Falta el valor de retorn a return");
+            ) ";"
+            @cod.DestruccionsPerReturn();
+            @cod.put(IUnlink,Comentari("Treure variables locals de la pila"));
+            @cod.put(IRet,Comentari("Sortida clausura per return"));
+        |
+        // if ------------------------------------------------------------------
+        @cod.Put(ComentariLinea("Linea ",CSLGetScanLineNumber(),": ","If Condicio"));
+        if <Expressio(cod,true)> 
+        @if (cod.Tipus!=TBool) throw SemanticError("Error de tipus en if");
+        @Var EtiElse=Etiqueta("L_Else%");
+        @Cod.PushValue();
+        @cod.put(IJmpFalse,RefEtiqueta(EtiElse));
+        @cod.Put(ComentariLinea("then <instruccio>"));
+        then <instruccio(cod)> (
+            else
+                @Var EtiEndIf=Etiqueta("L_FiIf%");
+                @cod.put(IJmp,RefEtiqueta(EtiEndIf));
+                @cod.Put(ComentariLinea("else <instruccio>"));
+                @cod.Put(DefEtiqueta(EtiElse));
+                <instruccio(cod)>
+                @cod.Put(DefEtiqueta(EtiEndIf));
+            | $
+                @cod.Put(DefEtiqueta(EtiElse));
+
+        )
+        |
+        // while ---------------------------------------------------------------
+        while
+            @var EtiWhile=Etiqueta("L_RepetirWhile%");
+            @var EtiEndWhile=Etiqueta("L_FiWhile%");
+            @cod.Put(ComentariLinea("Linea ",CSLGetScanLineNumber(),": ","while <expressio>"));
+            @Cod.Put(DefEtiqueta(EtiWhile));
+            <Expressio(cod,true)>
+            @if (cod.Tipus!=TBool) throw SemanticError("Error de tipus en while");
+            @Cod.PushValue();
+            @cod.put(IJmpFalse,RefEtiqueta(EtiEndWhile));
+            @cod.Put(ComentariLinea("do <instruccio>"));
+        do <instruccio(cod)>
+            @cod.put(IJmp,RefEtiqueta(EtiWhile));
+            @Cod.Put(DefEtiqueta(EtiEndWhile));
+            @cod.Put(ComentariLinea("Linea ",CSLGetScanLineNumber(),": ","final while"));
+        |
+        // Print ---------------------------------------------------------------
+        @var NewLine=false;
+        (Print | PrintLn @NewLine=true; )
+        @cod.Put(ComentariLinea("Linea ",CSLGetScanLineNumber(),": ",if (NewLine) "PrintLn" else "Print"));
+        [
+            @cod.Put(ComentariLinea("Imprimir valor"));
+            <Expressio(cod,true)>
+            @Cod.PushValue();
+            @switch (cod.Tipus) {
+                TBool  => cod.Put(IPrintBool);
+                TChar  => cod.Put(IPrintChar);
+                TInt   => cod.Put(IPrintInt);
+                TReal  => cod.Put(IPrintReal);
+                TArray => {
+                    if (cod.Tipus.TipusElements!:=TChar) {
+                        throw SemanticError("Tipus de dades erroni a print");
+                    }
+                    cod.Put(IPrintString,Cod.Tipus.Mida);
+                }
+                TApuntador => cod.Put(IPrintInt);
+                Others => throw SemanticError("Tipus de dades erroni a print");
+            };
+            {,<Expressio(cod,true)>
+                @Cod.PushValue();
+                @switch (cod.Tipus) {
+                    TBool  => cod.Put(IPrintBool);
+                    TChar  => cod.Put(IPrintChar);
+                    TInt   => cod.Put(IPrintInt);
+                    TReal  => cod.Put(IPrintReal);
+                    TArray => {
+                        if (cod.Tipus.TipusElements!:=TChar) {
+                            throw SemanticError("Tipus de dades erroni a print");
+                        }
+                        cod.Put(IPrintString,Cod.Tipus.Mida);
+                    }
+                    TApuntador => cod.Put(IPrintInt);
+                    Others => throw SemanticError("Tipus de dades erroni a print");
+                };
+            }
+        ]
+        @if (NewLine) cod.Put(IPushLit,1,'\n',IPrintChar);
+        ";"
+
+        | 
+        // Exit ----------------------------------------------------------------
+        Exit ";"
+        @cod.put(IExit);
+        
+        | 
+        // delete --------------------------------------------------------------
+        delete <expressio(cod,true)> ";"
+        @{
+            if (!TypeP(TApuntador,cod.Tipus)) throw SemanticError("Tipus erroni a delete");
+            cod.PushValue();
+            if (cod.Tipus.TipusBase.Destructor()!=unbound) {
+                cod.Put(IDup,4,Comentari("Duplicar l'adreça de l'objecte per poder alliberar l'espai amb IDelete"));
+                cod.Destruccio(AddressInStack,cod.Tipus.TipusBase);
+            }
+            cod.put(IDelete);
+        }
+        |
+        // block { ...} --------------------------------------------------------
+        <Bloc(cod)>
+
+        |
+        // ; -------------------------------------------------------------------
+        ";"
+        |
+        // Imprimir taula de símbols -------------------------------------------
+        IMPRIMIR_TAULA_DE_SIMBOLS ";" 
+        @ts.Imprimir();
+        @ts.ImprimirSemantic(SortidaSemantic);
+
+    // <Expressio> =============================================================
+    Rule <Expressio(cod:CodiEnGeneracio,Resultat:Bool)>::=
+        <TerBool(cod,Resultat)> {
+            "||" 
+            @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+            @if (cod.Tipus!:=TBool) throw SemanticError("Error de tipus de dades en || ",cod.Tipus);
+            @Cod.PushValue();
+            <TerBool(cod,true)>
+            @if (cod.Tipus!:=TBool) throw SemanticError("Error de tipus de dades en || ",cod.Tipus);
+            @Cod.PushValue();
+            @Cod.put(IOr);
+            @Cod.SetRValue(TBool);
+        }
+        @AssociarAtribut("Resultat=",Resultat);
+        @Cod.AssociarAtributs();
+
+    // <TerBool> ===============================================================
+    Rule <TerBool(cod:CodiEnGeneracio,Resultat:Bool)>::=
+        <FacBool(cod,Resultat)> {
+            && 
+            @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+            @if (cod.Tipus!:=TBool) throw SemanticError("Error de tipus de dades en && ",cod.Tipus);
+            @Cod.PushValue();
+            <FacBool(cod,true)>
+            @if (cod.Tipus!:=TBool) throw SemanticError("Error de tipus de dades en && ",cod.Tipus);
+            @Cod.PushValue();
+            @Cod.put(IAnd);
+            @Cod.SetRValue(TBool);
+        }
+        @AssociarAtribut("Resultat=",Resultat);
+        @Cod.AssociarAtributs();
+
+    // <FacBool> ===============================================================
+    Rule <FacBool(cod:CodiEnGeneracio,Resultat:Bool)>::=
+        <ExpArit(cod,Resultat)> [
+            @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+            @Cod.PushValue();
+            @Var CompReal,CompInt;
+            @var cod2=CodiEnGeneracio();
+            (
+                ==
+                    @CompInt=IEqInt;
+                    @CompReal=IEqReal;
+                | !=
+                    @CompInt=INEqInt;
+                    @CompReal=INEqReal;
+                | ">"
+                    @CompInt=IGreaterInt;
+                    @CompReal=IGreaterReal;
+                | "<"
+                    @CompInt=ILessInt;
+                    @CompReal=ILessReal;
+                | >=
+                    @CompInt=IGreaterEqInt;
+                    @CompReal=IGreaterEqReal;
+                | <=
+                    @CompInt=ILessEqInt;
+                    @CompReal=ILessEqReal;
+           )
+           <ExpArit(cod2,true)>
+           @Cod2.PushValue();
+           // TODO: hi ha  que canviar el semàntic y la generació de codi
+           // per comparar arrays y classes.
+           // no es important fer-lo, ja que nomes afecta aquí.
+            @switch ((Cod.Tipus,Cod2.Tipus)) {
+                (TInt,TInt) => {
+                    Cod2.Put(CompInt);
+                }
+                (TInt,TReal) => {
+                    Cod.Put(IIntToReal);
+                    Cod2.Put(CompReal);
+                }
+                (TReal,TInt) => {
+                    Cod2.Put(IIntToReal);
+                    Cod2.Put(CompReal);
+                }
+                (TReal,TReal) => {
+                    Cod2.Put(CompReal);
+                }
+                Others => {
+                    if (TypeP(TApuntador,Cod.Tipus) && TypeP(TApuntador,Cod2.Tipus) && TipusIguals(cod.Tipus,cod2.Tipus)) {
+                        Cod2.Put(CompInt);
+                    }
+                    else throw SemanticError("Error de tipus de dades en comparacio ",(Cod.Tipus,Cod2.Tipus));
+                }
+            };
+            @cod.Concat(cod2);
+            @Cod.SetRValue(TBool);
+        ]
+        @AssociarAtribut("Resultat=",Resultat);
+        @Cod.AssociarAtributs();
+
+    // <ExpArit> ===============================================================
+    Rule <ExpArit(cod:CodiEnGeneracio,Resultat:Bool)>::=
+        <terme(cod,Resultat)> {
+            @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+            @var cod2=CodiEnGeneracio(); 
+            (
+                + <terme(cod2,true)>
+                @switch ((Cod.Tipus,Cod2.Tipus)) {
+                    (TInt,TInt) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IAddInt);
+                        cod.Concat(cod2);
+                        cod.SetRValue(TInt);
+                    }
+                    (TInt,TReal) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod.Put(IIntToReal);
+                        Cod2.Put(IAddReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    (TReal,TInt) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IIntToReal,
+                                 IAddReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    (TReal,TReal) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IAddReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    Others => throw SemanticError(
+                        "Error de tipus de dades en suma ",(Cod.Tipus,Cod2.Tipus));
+                };
+                | 
+                - <terme(cod2,true)>
+                @switch ((Cod.Tipus,Cod2.Tipus)) {
+                    (TInt,TInt) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(ISubInt);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TInt);
+                    }
+                    (TInt,TReal) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod.Put(IIntToReal);
+                        Cod2.Put(ISubReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    (TReal,TInt) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IIntToReal,
+                                 ISubReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    (TReal,TReal) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(ISubReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    Others =>{
+                        if (TypeP(TApuntador,Cod.Tipus) && TypeP(TApuntador,Cod2.Tipus)) {
+                            Cod.PushValue();
+                            Cod2.PushValue();
+                            Cod2.Put(ISubInt);
+                            cod.Concat(cod2);
+                            Cod.SetRValue(TInt);
+                        }
+                        else throw SemanticError("Error de tipus de dades en resta ",(Cod.Tipus,Cod2.Tipus));
+                    }
+                };
+            )
+        }
+        @AssociarAtribut("Resultat=",Resultat);
+        @Cod.AssociarAtributs();
+
+    // <Terme> =================================================================
+    Rule <terme(cod:CodiEnGeneracio,Resultat:Bool)>::=
+        <factor(cod,Resultat)> {
+            @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+            @Var cod2=CodiEnGeneracio(); 
+            (
+                * <factor(cod2,true)>
+                @switch ((Cod.Tipus,Cod2.Tipus)) {
+                    (TInt,TInt) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IMultInt);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TInt);
+                    }
+                    (TInt,TReal) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod.Put(IIntToReal);
+                        Cod2.Put(IMultReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    (TReal,TInt) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IIntToReal,
+                                 IMultReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    (TReal,TReal) => {
+                        Cod.PushValue();
+                        Cod2.PushValue();
+                        Cod2.Put(IMultReal);
+                        cod.Concat(cod2);
+                        Cod.SetRValue(TReal);
+                    }
+                    Others => throw SemanticError(
+                        "Error de tipus de dades en resta ",(Cod.Tipus,Cod2.Tipus));
+                };
+              | div <factor(cod2,true)>
+                @{
+                    if (Cod.Tipus != TInt) throw SemanticError("Error: l'esquerra no es int");
+                    if (Cod2.Tipus != TInt) throw SemanticError("Error: la dreta no es int");
+                    
+                    var t_resultat = TInt; 
+                    Cod.PushValue();
+                    Cod2.PushValue();
+                    
+                    Cod2.Put(IDivInt); 
+                    
+                    cod.Concat(cod2);
+                    cod.SetRValue(t_resultat);
+                }
+                | mod <factor(cod2,true)>
+                @{
+                    if (Cod.Tipus != TInt) throw SemanticError("Error en mod: esquerra malament");
+                    if (Cod2.Tipus != TInt) throw SemanticError("Error en mod: dreta malament");
+                    
+                    Cod.PushValue();
+                    Cod2.PushValue();
+                    
+                    Cod2.Put(IModInt); 
+                    
+                    cod.Concat(cod2);
+                    cod.SetRValue(TInt);
+                }
+            )
+        }
+        @AssociarAtribut("Resultat=",Resultat);
+        @Cod.AssociarAtributs();
+        
+
+    // <Factor> ================================================================
+    Rule <factor(cod:CodiEnGeneracio,Resultat:Bool)>::=
+        (
+        // ! -------------------------------------------------------------------
+        !
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        <factor(cod,true)>
+        @Cod.PushValue();
+        @if (cod.Tipus!:=TBool) throw SemanticError("Error de tipus de dades a !",cod.Tipus);
+        @Cod.put(INot);
+        @cod.SetRValue(TBool);
+        | 
+        // - -------------------------------------------------------------------
+        -
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        <factor(cod,true)>
+        @{
+            Cod.PushValue();
+            switch (cod.Tipus) {
+                TInt => Cod.put(INegInt);
+                TReal => Cod.put(INegReal);
+                Others => throw SemanticError(
+                    "Error de tipus de dades a cambi de signe ",cod.Tipus);
+            }
+            cod.SetRValue(cod.Tipus);
+        }
+        | 
+        // & ------------------------------------------------------------------
+        &
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        <factor(cod,true)>
+        @if (!cod.PermisEscriptura) throw SemanticError("El operando de & no es un LValue"); 
+        @cod.PushAdreca();
+        @cod.Adreca=unbound;
+        @cod.SetRValue(TApuntador(cod.Tipus));
+        |
+        // ( expressió ) ------------------------------------------------------
+        "(" <Expressio(cod,Resultat)> ")"
+        
+        |
+        // Numero -------------------------------------------------------------
+        @var v;
+        Numero#(v) 
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        @Cod.SetRValue(if (typeP(int,v)) TInt else TReal);
+        @Cod.put(IPushLit,cod.Tipus.MidaTipus(),v);
+        |
+        // Caracter ------------------------------------------------------------
+        @var v;
+        Caracter#(v)
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        @Cod.put(IPushLit,1,v);
+        @Cod.SetRValue(TChar);
+        |
+        // String --------------------------------------------------------------
+        @var v;
+        String#(v)
+        @{
+            if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+            cod.SetRValue(TArray(v.Length,TChar));
+            Cod.put(IPushLit,cod.Tipus.MidaTipus(),v);
+            if (TS.Funcio==unbound) {
+                var posicio=Etiqueta(".String%"); 
+                CodiGlobal.put(Espai(Posicio,cod.Tipus.MidaTipus()));
+                TS.Insertar(ETSVariable(posicio.nom,cod.Tipus,true,false,Posicio));
+                cod.Put(IPopGVar,cod.Tipus.MidaTipus(),RefEtiqueta(posicio));
+                cod.adreca=RefEtiqueta(posicio);
+            }
+            else {
+                ts.VarSz=ts.VarSz+cod.Tipus.MidaTipus();
+                var posicio=-ts.VarSz;
+                TS.Insertar(ETSVariable(".String",cod.Tipus,true,false,Posicio));
+                cod.Put(IPopBVar,cod.Tipus.MidaTipus(),posicio);
+                cod.adreca=(0,posicio); 
+            }
+        }
+        |
+        // true ----------------------------------------------------------------
+        true
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        @Cod.put(IPushLit,4,1);
+        @Cod.SetRValue(TBool);
+        |
+        // false ---------------------------------------------------------------
+        false
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        @Cod.put(IPushLit,4,0);
+        @Cod.SetRValue(TBool);
+        |
+        // Null ----------------------------------------------------------------
+        Null
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        @Cod.put(IPushLit,4,0);
+        @Cod.SetRValue(TApuntador(TVoid));
+        |
+        // new -----------------------------------------------------------------
+        "new" 
+        @Var codisParametres=[],t;
+        @if (!Resultat) throw SemanticError("No s'aprofita el resultat");
+        <tipus(t,unbound)>  [<parametres(codisParametres)>]
+        @{
+            Cod.Put(IMAlloc,t.MidaTipus());            
+            if (t.Constructors()!=[] || codisParametres.length!=0) {
+                TS.VarSz=TS.VarSz+4;
+                Var despApuntador=-TS.VarSz;
+                cod.Put(IPopBVar,4,despApuntador);
+                cod.Construccio((despApuntador,0),t,codisParametres);
+                cod.Put(IPushBVar,4,despApuntador);                
+            }
+            Cod.SetRValue(TApuntador(t));
+        }
+        |        
+        // this/Identificador -------------------------------------------------------
+        // <PosibleLValue>::=(this|ID [<param>]) <Acces>
+        @var CodAcc=CodiEnGeneracio();        
+        <PosibleLValue(CodAcc)> 
+        (
+            // Asignación ------------------------------------------------------
+            @if (!codAcc.PermisEscriptura) throw SemanticError("No es pot asignar");
+            = <Expressio(cod,true)>
+            @cod.Assignacio(codAcc,Resultat);
+        | 
+            $ // Lectura
+            @{
+                if (Resultat && CodAcc.Tipus=:=TVoid) throw SemanticError("Falta un resultat");
+                if (!Resultat && CodAcc.Tipus!:=TVoid) throw SemanticError("Sobra un resultat");
+                Cod.Concat(CodAcc);
+            }
+        )
+        )
+        @AssociarAtribut("Resultat=",Resultat);
+        @cod.AssociarAtributs();
+        
+    // <PosibleLValue> =========================================================
+    // <PosibleLValue>::=::=(this|ID [<param>]) <Acces>
+    Rule <PosibleLValue(CodAcc:CodiEnGeneracio)>::=
+    (
+        @var nom;     
+        (
+            this
+            @var |ets,nivell|=TS.BuscarMetodeActiu();
+            @CodAcc.Adreca=(if (nivell==0) 0 else 4+nivell*4,8);
+            @CodAcc.SetRValue(TApuntador(ets.Classe));
+        |
+            Identificador#(nom) 
+            ( 
+                // llamada o construcción ------------------------------------------
+                @var |etss,nivell|=TS.Buscar(nom);
+                @var codisParametres;
+                <Parametres(codisParametres)>
+                @{
+                    if (TypeP(ETSTipus,etss.Head) && TypeP(TClasse,etss.Head.Tipus)) {
+                        // Construcción
+                        Var t=etss.Head.Tipus;                                    
+                        var etsCons=SeleccionarMetode(t.Constructors(),codisParametres);
+                        TS.VarSz=TS.VarSz+t.MidaTipus();
+                        TS.Insertar(ETSVariable(".Retorn TMP",t,true,true,-TS.VarSz));
+                        var DespObjecte=-TS.VarSz;
+                        codAcc.Put(ComentariLinea("Construccio de ",TS.NomTipus(t), " a ", (0,DespObjecte), " amb ", TS.StringETSFuncio(etsCons)));
+                        ComprovarPermisosParametres(codisParametres,etsCons.Parametres);
+						PosarParametresAPila(CodAcc,codisParametres,etsCons.Parametres);
+                        CodAcc.Put(IPushAddressBVar, DespObjecte,Comentari("Possar a la pila l'adreça de l'objecte a construir"));
+                        // Crida
+                        CodAcc.Put(ICall,RefEtiqueta(etsCons.Posicio),Comentari("Crida al constructor"));
+                        // Treure this
+                        CodAcc.Put(IAddSP,4,Comentari("Treure de la pila l'adreça de l'objecte construit"));
+                        // Treure parametres de la pila
+                        TreureParametresDeLaPila(CodAcc,etsCons.Parametres);
+                        CodAcc.SetRValue(t);
+                        CodAcc.Adreca=(0,DespObjecte);
+                    }
+                    else if (TypeP(ETSFuncio,etss.Head)) {
+                        // Crida a funció/procediment/mètode
+                        var etsFun=SeleccionarMetode(etss,codisParametres);
+                        var t=etsFun.TipusRetorn;                                    
+                        var DespObjecte=unbound;
+                        codAcc.Put(ComentariLinea("Crida a ", TS.StringETSFuncio(etsFun)));
+                        if (t!:=TVoid) {
+                            if (t.TipusSimpleP()) CodAcc.Put(IAddSP,-t.MidaTipus(),Comentari("Reservar espai a la pila per al valor de retorn"));
+                            else {
+                                TS.VarSz=TS.VarSz+t.MidaTipus();
+                                TS.Insertar(ETSVariable(".Retorn TMP",t,true,true,-TS.VarSz));
+                                CodAcc.Put(IPushAddressBVar,-TS.VarSz);
+                                DespObjecte=-TS.VarSz;
+                            }
+                        }
+						ComprovarPermisosParametres(codisParametres,etsFun.Parametres);
+                        PosarParametresAPila(CodAcc,codisParametres,etsFun.Parametres);
+                        if (etsFun.Classe!=TVoid) {
+                            // This
+                            if (Nivell==0) CodAcc.Put(IPushBVar,4,8,Comentari("Posar this a la pila"));
+                            else CodAcc.Put(IPushDispVar,4,4+Nivell*4,8,Comentari("Posar this a la pila"));
+                        }
+                        else if (nivell!=Global) {
+                            //Display
+                            var NivellCodi=TS.Nivell();
+                            if (nivell==0) {
+                                if (NivellCodi>1) CodAcc.Put(IPushBVar,4*(NivellCodi-1),8,Comentari("Copiar display a la pila"));
+                                CodAcc.Put(IPushB,Comentari("Afegir al display la base del bloc d'activació a la pila"));
+                            }
+                            else {
+                                CodAcc.Put(IPushBVar,4*(NivellCodi-nivell),8+(nivell-1)*4,Comentari("Copiar part del display a la pila"));
+                            }
+                        }
+                        // Crida
+                        CodAcc.Put(ICall,RefEtiqueta(etsFun.Posicio),Comentari("Crida a funció/procediment/mètode"));
+                        if (nivell!=Global) {
+                            // Treure display
+                            CodAcc.Put(IAddSP,4*(TS.Nivell()-nivell),Comentari("Treure display de la pila"));
+                        }
+                        if (etsFun.Classe!=TVoid) {
+                            // Treure this
+                            CodAcc.Put(IAddSP,4,Comentari("Treure this de la pila"));
+                        }
+                        // Treure parametres de la pila
+                        TreureParametresDeLaPila(CodAcc,etsFun.Parametres);
+                        // Treure adreça valor de retorn
+                        if (DespObjecte!=unbound) CodAcc.Put(IAddSP,4,Comentari("Treure de la pila l'adreça del valor de retorn"));
+                        CodAcc.SetRValue(t);
+                        if (DespObjecte!=unbound) CodAcc.Adreca=(0,DespObjecte);
+                        CodAcc.Put(ComentariLinea("Final crida"));
+                    }
+                    else  throw SemanticError(nom," no es funció, procedimient ni classe");
+                }
+                |
+                
+                // Variable/paràmetre/Camp  ------------------------------------
+                $
+                @{
+                    var |etss,Nivell|=TS.Buscar(nom);
+                    var ets=etss.head;
+                    if (TypeP(ETSVariable,ets)) {
+                        codAcc.SetLValue(ets.Tipus);
+                        CodAcc.Adreca=PosicioAAdreca(ets.Posicio,nivell);
+                    }
+                    else throw SemanticError(nom," no es variable");
+                }
+            ) 
+        )
+        <Acces(CodAcc)>
+    )
+    @codAcc.AssociarAtributs();
+        
+    // <Acces> =================================================================    
+    Rule <Acces(CodAcc:CodiEnGeneracio)>::= 
+        {
+            (
+            <AccesIndex(CodAcc)>      |
+            <AccesCampMetode(CodAcc)> |
+            <AccesApuntador(CodAcc)>
+            ) //@CodAcc.VeureCodiGenerat();
+        }
+        @codAcc.AssociarAtributs();
+        
+    // <AccesIndex> =============================================================
+    Rule <AccesIndex(CodAcc:CodiEnGeneracio)>::= 
+        @{
+            if (!typeP(TArray,CodAcc.Tipus)) throw SemanticError("Tipus erroni en array");
+            //if (CodAcc.Adreca=:=unbound) throw Exception("Error intern en index");
+            var CodIndex=CodiEnGeneracio();
+            switch (CodAcc.Adreca) {
+                RefEtiqueta => {
+                    CodIndex.put(IPushAddressGVar,CodAcc.Adreca);
+                }
+                Vector => {
+                    if (CodAcc.Adreca[0]==0) CodIndex.Put(IPushAddressBVar,CodAcc.Adreca[1]);
+                    else CodIndex.Put(IPushAddressDispVar,CodAcc.Adreca[0],CodAcc.Adreca[1]);
+                }
+                Queue => CodIndex.Codi.PutElements(CodAcc.Adreca);
+            }
+        }
+        "[" <Expressio(CodIndex,true)>
+        @{
+            if (CodIndex.Tipus!:=TInt) throw SemanticError("Tipus erroni en index");
+            CodIndex.PushValue();
+            CodAcc.Tipus=CodAcc.Tipus.TipusElements;
+            CodIndex.Put(IPushLit,4,CodAcc.Tipus.MidaTipus());
+            CodIndex.Put(IMultInt);
+            CodIndex.Put(IAddInt);
+        }
+        "]"
+        @CodAcc.Adreca=CodIndex.Codi;
+        @codAcc.AssociarAtributs();
+
+    // <AccesCampMetode> =======================================================
+    Rule <AccesCampMetode(CodAcc:CodiEnGeneracio)>::= 
+        @if (!typeP(TClasse,codAcc.Tipus)) throw SemanticError("Tipus erroni en .camp",typeof(codAcc.Tipus));
+        @{
+            if (CodAcc.Adreca=:=unbound) {
+                // Pasar el valor a variable para acceder
+                Throw Exception("Error intern en .camp");
+            }
+        }
+        @var nom;
+        . identificador#(nom) 
+        (
+            // .metode(...) ------------------------------------------------
+            @if (!codAcc.PermisEscriptura ) throw SemanticError("El objecte sobre el que s'aplica el método no és LValue");
+            @var codisParametres;
+            <parametres(codisParametres)>
+            @{
+                var etss=codAcc.Tipus.BuscarMetode(nom);
+                var ets=SeleccionarMetode(etss,codisParametres);
+                var t=ets.TipusRetorn;
+                codAcc.Put(ComentariLinea("Crida al Metode ", TS.StringETSFuncio(ets)));
+                // Generar la llamada
+                var codtmp=CodiEnGeneracio();
+                var DespObjecte=unbound;
+                if (t!:=TVoid) {
+                    if (t.TipusSimpleP()) codtmp.Put(IAddSP,-t.MidaTipus(),Comentari("Reserva espai a la pila pel valor de retorn"));
+                    else {
+                        TS.VarSz=TS.VarSz+t.MidaTipus();
+                        TS.Insertar(ETSVariable(".Retorn TMP",t,true,true,-TS.VarSz));
+                        codtmp.Put(IPushAddressBVar,-TS.VarSz,Comentari("Posar a la pila la adreça del valor de retorn"));
+                        DespObjecte=-TS.VarSz;
+                    }
+                }
+				ComprovarPermisosParametres(codisParametres,ets.Parametres);
+                PosarParametresAPila(Codtmp,codisParametres,ets.Parametres);
+                // Poner la dirección del objeto
+                CodAcc.PushAdreca();
+                CodTmp.Concat(CodAcc);
+                // Crida
+                codtmp.Put(ICall,RefEtiqueta(ets.Posicio),Comentari("Crida al mètode"));
+                codtmp.Put(IAddSP,4,Comentari("Treure this de la pila"));
+                TreureParametresDeLaPila(codTmp,ets.Parametres);
+                if (DespObjecte!=unbound) {
+                    Codtmp.Put(IAddSP,4,Comentari("Treure adreça del valor de retorn de la pila"));
+                    Codtmp.Adreca=(0,DespObjecte);
+                }
+				else CodTmp.Adreca=unbound;
+                Codtmp.Tipus=t;
+
+                CodAcc.Codi=CodTmp.Codi;
+                CodAcc.Adreca=CodTmp.Adreca;
+                CodAcc.SetRValue(Codtmp.Tipus);
+            }
+            | 
+            // .camp -------------------------------------------------------
+            $
+            @{
+                var ets=codAcc.Tipus.BuscarCamp(nom);
+                codAcc.Tipus=ets.Tipus;                 
+                switch (CodAcc.Adreca) {
+                    RefEtiqueta => CodAcc.Adreca=RefEtiqueta(CodAcc.Adreca.eti,CodAcc.Adreca.Desp+ets.Posicio.Desp);
+                    vector => CodAcc.Adreca=(CodAcc.Adreca[0],CodAcc.Adreca[1]+ets.Posicio.Desp);
+                    Queue => {
+                        CodAcc.Adreca.Put(IPushLit,4,ets.Posicio.Desp);
+                        CodAcc.Adreca.Put(IAddInt);
+                    }
+                }
+            }
+        )
+        @codAcc.AssociarAtributs();
+
+    // <AccesApuntador> =======================================================
+    Rule <AccesApuntador(CodAcc:CodiEnGeneracio)>::= 
+        ^
+        @{
+            if (!TypeP(TApuntador,codAcc.Tipus)) throw SemanticError("Tipus erroni en ^");
+            CodAcc.SetLValue(codAcc.Tipus.TipusBase);
+            if (CodAcc.Adreca=:=unbound) {
+                CodAcc.Adreca=CodAcc.Codi;
+                CodAcc.Codi=queue();
+            }
+            else {
+                switch (CodAcc.Adreca) {
+                    RefEtiqueta => {
+                        var q=Queue();
+                        q.put(IPushGVar,4,CodAcc.Adreca);
+                        CodAcc.Adreca=q;
+                    }
+                    Vector => {
+                        var q=Queue();
+                        if (CodAcc.Adreca[0]==0) q.Put(IPushBVar,4,CodAcc.Adreca[1]);
+                        else q.Put(IPushDispVar,4,CodAcc.Adreca[0],CodAcc.Adreca[1]);
+                        CodAcc.Adreca=q;
+                    }
+                    Queue => {
+                        CodAcc.Adreca.Put(IPushInd,4);
+                    }
+                }
+            }
+        }
+        @codAcc.AssociarAtributs();
+
+    // <Parametres> ============================================================
+    Rule <parametres(&codisParametres)>::=
+        @codisParametres=[];
+        "(" [
+            @var cod=CodiEnGeneracio();
+            <Expressio(cod,true)>  
+            @codisParametres=cod::codisParametres;
+            { 
+                @cod=CodiEnGeneracio();
+                , <Expressio(cod,true)> 
+                @codisParametres=cod::codisParametres;
+            } 
+            ] 
+        ")"
+        @codisParametres=reverse(codisParametres);
+    // =========================================================================
+    END;    
+    }
+    CATCH (ex) {
+        ParserErrorNLin=CSLGetScanLineNumber();
+        ParserErrorLine=system$CSLScanLine();
+        ParserErrorNCol=system$CSLGetScanCharNumber();
+        ParserErrorException=ex;
+        COut.PrintLn("Error a la linea ",ParserErrorNLin,
+                     " del fitxer ",FileName);
+        COut.PrintLn(ParserErrorLine);
+        for (i<-0 .. min(ParserErrorNCol-1,ParserErrorLine.Length-1))
+            COut.Print(if (ParserErrorLine[i]=:='\t') '\t'
+                       else ' ');
+        COut.PrintLN("^ ",if (TypeP(exception,ex)) ex.What else ex);
+        if (TypeP(exception,ex)) COut.PrintLN(FmtPretty,ex.BackTrace);
+        system$CSLSetParserLineNumber(OldNLin);
+        system$CSLSetScanLineNumber(Oldline);
+        if (!TypeP(Stream,ST)) Close(ScanInput);
+        ScanInput=OldScanInput;
+        return;
+    };
+    system$CSLSetParserLineNumber(OldNLin);
+    system$CSLSetScanLineNumber(Oldline);
+    if (!TypeP(Stream,ST)) Close(ScanInput);
+    ScanInput=OldScanInput;
+
+    TRY {
+    if (veureCodiGenerat) CodiGlobal.VeureCodiGenerat();
+    Bolcar(CodiGlobal);
+    cout.PrintLn("=====================================================================");
+    cout.PrintLn("TEMPS D'EXECUCIO");
+    Run(0,VeureCodiExecucio);
+    cout.PrintLn("=====================================================================");
+    }
+    Catch (ex) {
+        Cout.PrintLN(FmtPretty,ex.BackTrace);
+        cout.PrintLn("Error: ",if (TypeP(exception,ex)) ex.What else ex);
+    }
+}

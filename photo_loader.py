@@ -5,23 +5,20 @@ from rembg import remove, new_session
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 
-# --- NEW HELPER FUNCTION ---
+
 def get_image_path(photo_num):
-    """
-    Finds the image checking for different extensions.
-    Returns the path if exists, otherwise None.
-    """
+
     supported_extensions = [".jpg", ".JPG", ".jpeg", ".JPEG", ".png", ".PNG", ".webp", ".WEBP"]
     for ext in supported_extensions:
         ruta = f"Photos/IMG_{photo_num}{ext}"
         if os.path.exists(ruta):
             return ruta
     return None
-# ---------------------------
+
 
 def sky_remove_cv2(photo_num):
 
-    image_name = get_image_path(photo_num) # MODIFIED: Using helper function
+    image_name = get_image_path(photo_num) 
     if not image_name:
         print(f"Error: No s'ha trobat la imatge {photo_num}.")
         return None
@@ -55,7 +52,7 @@ def sky_remove_cv2(photo_num):
 def sky_remove_ai(photo_num, model):
 
     #image route
-    image_name = get_image_path(photo_num) # MODIFIED: Using helper function
+    image_name = get_image_path(photo_num) 
     output_name = f"sky_remove_ai/mountain_{photo_num}_cutted.png"
 
     if not os.path.exists("sky_remove_ai"):
@@ -84,7 +81,7 @@ def sky_remove_ai(photo_num, model):
 
 def sky_remove_Laplace(photo_num, tolerance):
 
-    image_name = get_image_path(photo_num) # MODIFIED: Using helper function
+    image_name = get_image_path(photo_num) 
     
     if not image_name:
         print(f"Error: No s'ha trobat la imatge '{photo_num}'.")
@@ -126,7 +123,7 @@ def sky_remove_Laplace(photo_num, tolerance):
 # Laplace + cv2
 
 def sky_remove_hybrid(photo_num, tolerance):
-    image_name = get_image_path(photo_num) # MODIFIED: Using helper function
+    image_name = get_image_path(photo_num) 
     if not image_name:
         return None
             
@@ -170,10 +167,7 @@ def sky_remove_hybrid(photo_num, tolerance):
 
 
 def get_gps_from_photo(image_path):
-    """
-    Llegeix les metadades EXIF de la foto i retorna (latitud, longitud, altitud).
-    Si la foto no té dades de GPS, retorna None.
-    """
+
     try:
         image = Image.open(image_path)
         exif_data = image._getexif()
@@ -181,7 +175,7 @@ def get_gps_from_photo(image_path):
         if not exif_data:
             return None
         
-        # Busquem la secció específica de GPS dins les metadades
+        # search for gps metadata
         gps_info = {}
         for tag, value in exif_data.items():
             decoded_tag = TAGS.get(tag, tag)
@@ -190,11 +184,9 @@ def get_gps_from_photo(image_path):
                     gps_tag = GPSTAGS.get(t, t)
                     gps_info[gps_tag] = value[t]
                     
-        # Comprovem si realment hi ha latitud i longitud
         if "GPSLatitude" not in gps_info or "GPSLongitude" not in gps_info:
             return None
             
-        # Funció interna per passar de (Graus, Minuts, Segons) a Graus Decimals
         def to_decimal(value):
             d = float(value[0])
             m = float(value[1])
@@ -209,7 +201,6 @@ def get_gps_from_photo(image_path):
         if gps_info.get("GPSLongitudeRef") != "E":
             lon = -lon
             
-        # L'altitud no sempre hi és, posem 0 per defecte
         alt = 0.0
         if "GPSAltitude" in gps_info:
             alt = float(gps_info["GPSAltitude"])
