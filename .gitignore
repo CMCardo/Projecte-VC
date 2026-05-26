@@ -1,5 +1,33 @@
-Hybrid/
-Laplace/
-Contours/
-sky_remove_ai/
-sky_remove_cv2/
+# -----------------------------
+# Variables d'Entorn i Secrets
+# -----------------------------
+.env
+
+# -----------------------------
+# Memòria Cache i Fitxers Temporals
+# -----------------------------
+Cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# -----------------------------
+# Imatges i Dades d'Entrenament/Test
+# -----------------------------
+Photos/
+Photos_Test/
+PhotosTrain/
+
+# -----------------------------
+# Entorns Virtuals de Python
+# -----------------------------
+venv/
+.venv/
+env/
+
+# -----------------------------
+# Arxius del sistema operatiu
+# -----------------------------
+.DS_Store
+Thumbs.db
