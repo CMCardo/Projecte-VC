@@ -40,5 +40,5 @@ OPENTOPOGRAPHY_API_KEY=your_api_key_here
 
 3. **To launch the web interface, run the following command in your terminal:**
    ```bash
-python -m streamlit run app.py
+   python -m streamlit run app.py
 
