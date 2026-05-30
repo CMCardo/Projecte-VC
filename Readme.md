@@ -1,4 +1,4 @@
-# 🏔️ Mountain Sky Remover & Peak Identifier
+# Mountain Sky Remover & Peak Identifier
 
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B)
@@ -8,7 +8,7 @@
 
 The objective of this project is to detect and identify mountain peaks from photographs using almost exclusively Computer Vision and 1D signal processing, bypassing the need for heavy 3D rendering engines or unreliable smartphone compass sensors.
 
-## ⚙️ How it Works
+## How it Works
 
 1. **GPS Telemetry:** Extracts Latitude, Longitude, and Altitude directly from the EXIF metadata of the handmade photos.
 2. **Sky Removal & Silhouette Extraction:** Processes the image to remove the sky and extract a 1D curve of the real horizon. It features 4 interchangeable methods:
@@ -20,7 +20,7 @@ The objective of this project is to detect and identify mountain peaks from phot
 4. **Multi-scale Template Matching:** The system slides the photo's 1D curve over the DEM's 360º curve. By dynamically resizing the image to test different Fields of View (FOV), it finds the exact Camera Azimuth and scale using techniques like Normalized Cross-Correlation (NCC) and Coincidence Hits.
 5. **Peak Labeling:** Queries the **OpenStreetMap (Overpass API)** to identify and label the visible peaks within the exact calculated field of view.
 
-## 🚀 Installation & Setup
+## Installation & Setup
 
 1. **Clone the repository:**
    ```bash
