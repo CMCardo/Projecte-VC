@@ -10,17 +10,11 @@ BASE_DIR = os.path.dirname(CURRENT_DIR)
 CACHE_DIR = os.path.join(BASE_DIR, "Cache")
 
 def get_photo_name_from_path(image_path):
-    """
-    Extreu la imatge de la carpeta d'imatges.
-    """
     base_name = os.path.basename(image_path)
     name_without_ext = os.path.splitext(base_name)[0]
     return name_without_ext
 
 def download_dynamic_dem(image_path, lat, lon, api_key, radius_km=35, dem_type="COP90"):
-    """
-    Descarga el DEM de OpenTopograpy, tambe implementa un sistema de cache a partir dels noms de la foto.
-    """
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
 
@@ -105,9 +99,7 @@ def get_360_profile(dem_path, lat, lon, user_alt, max_dist_km=30):
     return profile_360
 
 def plot_360_profile(profile_360):
-    """
-    Crea una figura amb matplotlib, del perfil 360 graus generat amb el DEM
-    """
+
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.plot(profile_360, color='#1f77b4', linewidth=2.5, label="DEM Silhouette")
     ax.fill_between(range(360), profile_360, color='#1f77b4', alpha=0.15)
