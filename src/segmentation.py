@@ -4,10 +4,7 @@ from PIL import Image
 from rembg import remove, new_session
 
 def sky_remove_cv2(image_path):
-    """
-    Elimina els cels blaus fen servir el threshold de color amb HSV de OpenCV, reorna
-    un array de numpy amb el cel transparent, o None si hi ha error.
-    """
+
     image = cv2.imread(image_path)
     if image is None: return None
 
@@ -34,10 +31,7 @@ def sky_remove_cv2(image_path):
 
 
 def sky_remove_ai(image_path, model_name="u2net"):
-    """
-    Elimina el fons fen servir un model de deep learning ja entrenat (rembg), retorna
-    un array de NumPy (BGRA) amb el cel transparent o None si hi ha error.
-    """
+
     try:
         input_image = Image.open(image_path)
         session = new_session(model_name)
@@ -54,10 +48,7 @@ def sky_remove_ai(image_path, model_name="u2net"):
 
 
 def sky_remove_laplace(image_path, tolerance=3):
-    """
-    Elimina les areas suaus (com els cels) fen servir detecció de contorns amb Laplace.
-    Retorna un array de numpy (BGRA) amb cels transparents o None si hi ha error.
-    """
+
     image = cv2.imread(image_path)
     if image is None: return None
             
@@ -83,10 +74,7 @@ def sky_remove_laplace(image_path, tolerance=3):
 
 
 def sky_remove_hybrid(image_path, tolerance=3):
-    """
-    Combina color i textura per una extracció del cel més robusta, retorna un array
-    de Numpy (BGRA) amb cel transparent o None si hi ha error.
-    """
+
     image = cv2.imread(image_path)
     if image is None: return None
             
