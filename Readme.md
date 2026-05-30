@@ -22,12 +22,14 @@ The objective of this project is to detect and identify mountain peaks from phot
 
 ## Installation & Setup
 
-Make sure you have Python installed, then run:
-pip install -r requirements.txt
+1. **Install the dependencies:**
+   Make sure you have Python installed, then run:
+   ```bash
+   pip install -r requirements.txt
 
 
 
-Environment Variables:
+2. **Environment Variables:**
 To download the DEM maps, you need an API Key from OpenTopography.
 Create a .env file in the root directory and add your key:
 Fragmento de código
@@ -36,7 +38,6 @@ OPENTOPOGRAPHY_API_KEY=your_api_key_here
 
 
 
-To launch the web interface, run the following command in your terminal:
-Bash
+3. **To launch the web interface, run the following command in your terminal:**
 
 python -m streamlit run app.py
