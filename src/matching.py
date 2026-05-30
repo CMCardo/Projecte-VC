@@ -7,8 +7,7 @@ def find_best_match_correlation(photo_profile, dem_profile, min_fov=30, max_fov=
     best_angle = 0
     
     dem_extended = np.concatenate((dem_profile, dem_profile))
-    
-    # MATEMÁTICA DE DERIVADAS: Comparamos las "pendientes" en lugar de las alturas brutas.
+
     # Esto soluciona por completo el problema de los valles largos.
     dem_diff = np.gradient(dem_extended)
     photo_diff = np.gradient(photo_profile)
@@ -71,9 +70,7 @@ def find_best_match_mae(photo_profile, dem_profile, min_fov=30, max_fov=100):
 
 
 def find_best_match_coincidence(photo_profile, dem_profile, min_fov=30, max_fov=100, tolerance=0.05):
-    """
-    Metode 3: Coincidencia punt per punt. Comproba cuants punts cauen dins un marge d'error especific.
-    """
+
     best_score = -1.0 
     best_fov = 0
     best_angle = 0
