@@ -2,9 +2,7 @@ import math
 import requests
 
 def calculate_bearing(lat1, lon1, lat2, lon2):
-    """
-    Calcula la azimuth del punt inicial 1 al punt 2 (pic), retorna l'angle entre 0 i 360 graus.
-    """
+
     lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
     dlon = lon2 - lon1
     
@@ -16,9 +14,7 @@ def calculate_bearing(lat1, lon1, lat2, lon2):
 
 
 def get_visible_peaks(observer_lat, observer_lon, angle_start, fov, radius_km=25):
-    """
-    Demana els pics en un radi (radius_km) a openstreetmap i filtre els visibles des de l'angle_start.
-    """
+
     overpass_url = "https://lz4.overpass-api.de/api/interpreter"
     query = f"""
     [out:json];
