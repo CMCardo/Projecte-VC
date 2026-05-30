@@ -2,10 +2,7 @@ import cv2
 import numpy as np
 
 def extract_manual_profile(image_path):
-    """
-    Llegeix el ground truth i extreu el perfil monodimencional. Retorna un array
-    on les columnes vuides estan marcades com a np.nan.
-    """
+
     img = cv2.imread(image_path)
     if img is None:
         return None
@@ -36,11 +33,7 @@ def extract_manual_profile(image_path):
 
 
 def compare_contours(profile_manual, profile_algo, tolerance_px=5):
-    """
-    Compares the Ground Truth profile with the Algorithm's profile.
-    Returns: match_pct, error_pct, mean_dist.
-    Compara el ground truth amb el perfil del algorisme i retorna match_pct, error_pct i mean_dist.
-    """
+
     if profile_manual is None or profile_algo is None:
         return 0.0, 0.0, 0.0
         
