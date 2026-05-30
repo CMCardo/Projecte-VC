@@ -3,10 +3,7 @@ from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 
 def get_gps_from_photo(image_path):
-    """
-    Llegeix les metadades de una imatge i extreu coordenades de latitud, longitud i altitud, 
-    retornan (lat, lon, alt) com a floats, o None si no en troba.
-    """
+
     
     try:
         if not os.path.exists(image_path):
