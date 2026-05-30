@@ -50,9 +50,7 @@ def download_dynamic_dem(image_path, lat, lon, api_key, radius_km=35, dem_type="
         return None
 
 def get_360_profile(dem_path, lat, lon, user_alt, max_dist_km=30):
-    """
-    Algoritme que genera la silueta de 360 graus d'una montanya a partir de Ray-casting.
-    """
+
     with rasterio.open(dem_path) as src:
         dem_matrix = src.read(1)
         
